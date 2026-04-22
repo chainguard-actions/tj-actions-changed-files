@@ -1,4 +1,4 @@
-# tj-actions/changed-files
+# step-security/changed-files
 
 Hardened GitHub Action by [Chainguard](https://www.chainguard.dev).
 
