@@ -1,5 +1,7 @@
 # tj-actions/changed-files
 
+:octocat: Github action to retrieve all (added, copied, modified, deleted, renamed, type changed, unmerged, unknown) files and directories.
+
 Hardened by [Chainguard](https://www.chainguard.dev) from the upstream action at [https://github.com/tj-actions/changed-files](https://github.com/tj-actions/changed-files).
 
 ## Versions
