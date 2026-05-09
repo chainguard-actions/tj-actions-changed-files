@@ -1,4 +1,6 @@
 {
-  "upstream": "tj-actions/changed-files",
-  "version": "v47"
+  "owner": "tj-actions",
+  "repo": "changed-files",
+  "version": "",
+  "url": "https://github.com/tj-actions/changed-files"
 }
