@@ -1,7 +1,0 @@
-{
-  "owner": "tj-actions",
-  "name": "changed-files",
-  "visibility": "internal",
-  "description": ":octocat: Github action to retrieve all (added, copied, modified, deleted, renamed, type changed, unmerged, unknown) files and directories.",
-  "block_publish": false
-}
