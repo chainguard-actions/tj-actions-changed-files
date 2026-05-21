@@ -8,8 +8,8 @@ Hardened by [Chainguard](https://www.chainguard.dev) from the upstream action at
 
 | Version | Tag | Upstream commit |
 |---------|-----|-----------------|
-| v47 | [`v47`](https://github.com/chainguard-actions/changed-files/tree/v47) | — |
-| v47.0.1 | [`v47.0.1`](https://github.com/chainguard-actions/changed-files/tree/v47.0.1) | — |
+| v47 | [`v47`](https://github.com/chainguard-actions/tj-actions--changed-files/tree/v47) | — |
+| v47.0.1 | [`v47.0.1`](https://github.com/chainguard-actions/tj-actions--changed-files/tree/v47.0.1) | — |
 
 ## Privacy
 
