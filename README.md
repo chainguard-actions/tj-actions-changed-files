@@ -1,6 +1,6 @@
 # tj-actions/changed-files
 
-:octocat: Github action to retrieve all (added, copied, modified, deleted, renamed, type changed, unmerged, unknown) files and directories.
+Get all Added, Copied, Modified, Deleted, Renamed, Type changed, Unmerged, and Unknown files.
 
 Hardened by [Chainguard](https://www.chainguard.dev) from the upstream action at [https://github.com/tj-actions/changed-files](https://github.com/tj-actions/changed-files).
 
@@ -10,6 +10,7 @@ Hardened by [Chainguard](https://www.chainguard.dev) from the upstream action at
 |---------|-----|-----------------|
 | v47 | [`v47`](https://github.com/chainguard-actions/tj-actions-changed-files/tree/v47) | — |
 | v47.0.1 | [`v47.0.1`](https://github.com/chainguard-actions/tj-actions-changed-files/tree/v47.0.1) | — |
+| v47.0.6 | [`v47.0.6`](https://github.com/chainguard-actions/tj-actions-changed-files/tree/v47.0.6) | [`9426d40`](https://github.com/tj-actions/changed-files/commit/9426d40962ed5378910ee2e21d5f8c6fcbf2dd96) |
 
 ## Privacy
 
