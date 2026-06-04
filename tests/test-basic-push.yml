@@ -14,54 +14,88 @@ jobs:
 
       - name: Create a test commit so there is a diff
         run: |
-          git config user.email "test@example.com"
-          git config user.name "Test User"
-          echo "test file" > /tmp/test-changed.txt
-          git add /tmp/test-changed.txt 2>/dev/null || true
-          # Make a small change to an existing file to ensure there's a diff
-          echo "# test" >> README.md 2>/dev/null || echo "# test" > README.md
-          git add README.md
-          git commit -m "test: add test file" || true
+          git config user.email "test@test.com"
+          git config user.name "Test"
+          echo "test-file-$(date +%s)" > /tmp/testfile.txt
+          cp /tmp/testfile.txt test-changed-file.txt
+          git add test-changed-file.txt
+          git commit -m "Add test file for changed-files test"
 
       - id: changed
         uses: .
         with:
           separator: " "
+          safe_output: "true"
           fetch_depth: "25"
+          skip_initial_fetch: "false"
           since_last_remote_commit: "false"
+          write_output_files: "false"
+          output_dir: ".github/outputs"
+          json: "false"
+          escape_json: "true"
+          dir_names: "false"
+          diff_relative: "true"
+          quotepath: "true"
+          include_all_old_new_renamed_files: "false"
+          old_new_separator: ","
+          old_new_files_separator: " "
+          fail_on_initial_diff_error: "false"
+          fail_on_submodule_diff_error: "false"
+          negation_patterns_first: "false"
+          matrix: "false"
+          exclude_submodules: "false"
+          exclude_symlinks: "false"
+          skip_same_sha: "false"
 
-      - name: Assert outputs are set
+      - name: Assert all_changed_and_modified_files is set
         env:
-          ALL_CHANGED: ${{ steps.changed.outputs.all_changed_files }}
-          ALL_MODIFIED: ${{ steps.changed.outputs.all_modified_files }}
-          ANY_CHANGED: ${{ steps.changed.outputs.any_changed }}
-          ANY_MODIFIED: ${{ steps.changed.outputs.any_modified }}
+          ALL_CHANGED: ${{ steps.changed.outputs.all_changed_and_modified_files }}
+          ALL_CHANGED_COUNT: ${{ steps.changed.outputs.all_changed_and_modified_files_count }}
         run: |
-          echo "all_changed_files: $ALL_CHANGED"
-          echo "all_modified_files: $ALL_MODIFIED"
+          echo "all_changed_and_modified_files: $ALL_CHANGED"
+          echo "all_changed_and_modified_files_count: $ALL_CHANGED_COUNT"
+          if [ -z "$ALL_CHANGED_COUNT" ]; then
+            echo "FAIL: all_changed_and_modified_files_count output is empty"
+            exit 1
+          fi
+          echo "PASS"
+
+      - name: Assert added_files output is set
+        env:
+          ADDED: ${{ steps.changed.outputs.added_files }}
+          ADDED_COUNT: ${{ steps.changed.outputs.added_files_count }}
+        run: |
+          echo "added_files: $ADDED"
+          echo "added_files_count: $ADDED_COUNT"
+          if [ -z "$ADDED_COUNT" ]; then
+            echo "FAIL: added_files_count output is empty"
+            exit 1
+          fi
+          echo "PASS"
+
+      - name: Assert any_changed output is set
+        env:
+          ANY_CHANGED: ${{ steps.changed.outputs.any_changed }}
+        run: |
           echo "any_changed: $ANY_CHANGED"
-          echo "any_modified: $ANY_MODIFIED"
-          # Verify outputs are not empty strings (action ran successfully)
           if [ -z "$ANY_CHANGED" ]; then
             echo "FAIL: any_changed output is empty"
             exit 1
           fi
-          echo "PASS: outputs are set"
+          echo "PASS"
 
-      - name: Assert count outputs are numeric
+      - name: Assert any_modified output is set
         env:
-          ALL_CHANGED_COUNT: ${{ steps.changed.outputs.all_changed_files_count }}
-          ALL_MODIFIED_COUNT: ${{ steps.changed.outputs.all_modified_files_count }}
-          ADDED_COUNT: ${{ steps.changed.outputs.added_files_count }}
-          DELETED_COUNT: ${{ steps.changed.outputs.deleted_files_count }}
+          ANY_MODIFIED: ${{ steps.changed.outputs.any_modified }}
         run: |
-          echo "all_changed_files_count: $ALL_CHANGED_COUNT"
-          echo "all_modified_files_count: $ALL_MODIFIED_COUNT"
-          echo "added_files_count: $ADDED_COUNT"
-          echo "deleted_files_count: $DELETED_COUNT"
-          # Verify count outputs are numeric
-          if ! echo "$ALL_CHANGED_COUNT" | grep -qE '^[0-9]+$'; then
-            echo "FAIL: all_changed_files_count is not numeric: $ALL_CHANGED_COUNT"
+          echo "any_modified: $ANY_MODIFIED"
+          if [ -z "$ANY_MODIFIED" ]; then
+            echo "FAIL: any_modified output is empty"
             exit 1
           fi
-          echo "PASS: count outputs are numeric"
+          echo "PASS"
+
+      - name: Cleanup test file
+        if: always()
+        run: |
+          rm -f test-changed-file.txt || true

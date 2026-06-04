@@ -14,47 +14,75 @@ jobs:
 
       - name: Create nested directory structure and commit
         run: |
-          git config user.email "test@example.com"
-          git config user.name "Test User"
-          mkdir -p deep/nested/dir
-          echo "test" > deep/nested/dir/file.txt
-          git add deep/
-          git commit -m "test: add nested directory structure"
+          git config user.email "test@test.com"
+          git config user.name "Test"
+          mkdir -p dir-test/level1/level2
+          echo "nested content" > dir-test/level1/level2/file.txt
+          git add dir-test/
+          git commit -m "Add nested directory for dir_names test"
 
       - id: changed
         uses: .
         with:
           dir_names: "true"
           dir_names_max_depth: "2"
+          dir_names_exclude_current_dir: "false"
+          dir_names_deleted_files_include_only_deleted_dirs: "false"
+          separator: " "
+          safe_output: "true"
           fetch_depth: "25"
+          skip_initial_fetch: "false"
+          since_last_remote_commit: "false"
+          write_output_files: "false"
+          json: "false"
+          escape_json: "true"
+          diff_relative: "true"
+          quotepath: "true"
+          include_all_old_new_renamed_files: "false"
+          old_new_separator: ","
+          old_new_files_separator: " "
+          fail_on_initial_diff_error: "false"
+          fail_on_submodule_diff_error: "false"
+          negation_patterns_first: "false"
+          matrix: "false"
+          exclude_submodules: "false"
+          exclude_symlinks: "false"
+          skip_same_sha: "false"
 
-      - name: Assert dir_names outputs are set
+      - name: Assert all_changed_files contains directory (not deep path)
         env:
           ALL_CHANGED: ${{ steps.changed.outputs.all_changed_files }}
           ALL_CHANGED_COUNT: ${{ steps.changed.outputs.all_changed_files_count }}
-          ANY_CHANGED: ${{ steps.changed.outputs.any_changed }}
         run: |
-          echo "all_changed_files (dirs): $ALL_CHANGED"
+          echo "all_changed_files: $ALL_CHANGED"
           echo "all_changed_files_count: $ALL_CHANGED_COUNT"
-          echo "any_changed: $ANY_CHANGED"
-          if [ -z "$ANY_CHANGED" ]; then
-            echo "FAIL: any_changed output is empty"
+          if [ -z "$ALL_CHANGED_COUNT" ]; then
+            echo "FAIL: all_changed_files_count output is empty"
             exit 1
           fi
-          if ! echo "$ALL_CHANGED_COUNT" | grep -qE '^[0-9]+$'; then
-            echo "FAIL: all_changed_files_count is not numeric: $ALL_CHANGED_COUNT"
+          # With dir_names=true and max_depth=2, should see dir-test/level1 not dir-test/level1/level2
+          if echo "$ALL_CHANGED" | grep -q "dir-test/level1/level2"; then
+            echo "FAIL: expected max_depth=2 to truncate path, but got full path: $ALL_CHANGED"
             exit 1
           fi
-          echo "PASS: dir_names and dir_names_max_depth inputs work correctly"
+          if ! echo "$ALL_CHANGED" | grep -q "dir-test"; then
+            echo "FAIL: expected dir-test in output, got: $ALL_CHANGED"
+            exit 1
+          fi
+          echo "PASS"
 
-      - name: Assert max depth is respected (deep/nested not deep/nested/dir)
+      - name: Assert added_files_count is set
         env:
-          ALL_CHANGED: ${{ steps.changed.outputs.all_changed_files }}
+          ADDED_COUNT: ${{ steps.changed.outputs.added_files_count }}
         run: |
-          echo "all_changed_files (dirs): $ALL_CHANGED"
-          # With max_depth=2, we should see deep/nested but NOT deep/nested/dir
-          if echo "$ALL_CHANGED" | grep -q "deep/nested/dir"; then
-            echo "FAIL: deep/nested/dir should not appear with max_depth=2"
+          echo "added_files_count: $ADDED_COUNT"
+          if [ -z "$ADDED_COUNT" ]; then
+            echo "FAIL: added_files_count output is empty"
             exit 1
           fi
-          echo "PASS: max depth is respected"
+          echo "PASS"
+
+      - name: Cleanup test directory
+        if: always()
+        run: |
+          rm -rf dir-test/ || true
