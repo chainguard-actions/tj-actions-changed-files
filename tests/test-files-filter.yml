@@ -1,0 +1,84 @@
+name: Test files filter input
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REF: refs/heads/main
+      GITHUB_EVENT_NAME: push
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Create test files and commit
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+          mkdir -p src
+          echo "console.log('hello')" > src/app.js
+          echo "# docs" > docs.md
+          git add src/ docs.md
+          git commit -m "test: add source and docs files"
+
+      - id: changed-js
+        uses: .
+        with:
+          files: "**/*.js"
+          fetch_depth: "25"
+
+      - name: Assert JS files are detected
+        env:
+          ANY_CHANGED: ${{ steps.changed-js.outputs.any_changed }}
+          ALL_CHANGED: ${{ steps.changed-js.outputs.all_changed_files }}
+          ALL_CHANGED_COUNT: ${{ steps.changed-js.outputs.all_changed_files_count }}
+        run: |
+          echo "any_changed (js): $ANY_CHANGED"
+          echo "all_changed_files (js): $ALL_CHANGED"
+          echo "all_changed_files_count (js): $ALL_CHANGED_COUNT"
+          if [ "$ANY_CHANGED" != "true" ]; then
+            echo "FAIL: expected any_changed=true for *.js files"
+            exit 1
+          fi
+          if ! echo "$ALL_CHANGED" | grep -q "src/app.js"; then
+            echo "FAIL: src/app.js not found in all_changed_files"
+            exit 1
+          fi
+          echo "PASS: JS files filter works correctly"
+
+      - id: changed-md
+        uses: .
+        with:
+          files: "**/*.md"
+          fetch_depth: "25"
+
+      - name: Assert MD files are detected
+        env:
+          ANY_CHANGED: ${{ steps.changed-md.outputs.any_changed }}
+          ALL_CHANGED: ${{ steps.changed-md.outputs.all_changed_files }}
+        run: |
+          echo "any_changed (md): $ANY_CHANGED"
+          echo "all_changed_files (md): $ALL_CHANGED"
+          if [ "$ANY_CHANGED" != "true" ]; then
+            echo "FAIL: expected any_changed=true for *.md files"
+            exit 1
+          fi
+          echo "PASS: MD files filter works correctly"
+
+      - id: changed-ignore
+        uses: .
+        with:
+          files_ignore: "**/*.md"
+          fetch_depth: "25"
+
+      - name: Assert ignored MD files are not in changed files
+        env:
+          ALL_CHANGED: ${{ steps.changed-ignore.outputs.all_changed_files }}
+        run: |
+          echo "all_changed_files (ignore md): $ALL_CHANGED"
+          if echo "$ALL_CHANGED" | grep -q "docs.md"; then
+            echo "FAIL: docs.md should be ignored"
+            exit 1
+          fi
+          echo "PASS: files_ignore works correctly"

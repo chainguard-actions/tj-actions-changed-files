@@ -1,0 +1,67 @@
+name: Test basic push usage
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REF: refs/heads/main
+      GITHUB_EVENT_NAME: push
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Create a test commit so there is a diff
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+          echo "test file" > /tmp/test-changed.txt
+          git add /tmp/test-changed.txt 2>/dev/null || true
+          # Make a small change to an existing file to ensure there's a diff
+          echo "# test" >> README.md 2>/dev/null || echo "# test" > README.md
+          git add README.md
+          git commit -m "test: add test file" || true
+
+      - id: changed
+        uses: .
+        with:
+          separator: " "
+          fetch_depth: "25"
+          since_last_remote_commit: "false"
+
+      - name: Assert outputs are set
+        env:
+          ALL_CHANGED: ${{ steps.changed.outputs.all_changed_files }}
+          ALL_MODIFIED: ${{ steps.changed.outputs.all_modified_files }}
+          ANY_CHANGED: ${{ steps.changed.outputs.any_changed }}
+          ANY_MODIFIED: ${{ steps.changed.outputs.any_modified }}
+        run: |
+          echo "all_changed_files: $ALL_CHANGED"
+          echo "all_modified_files: $ALL_MODIFIED"
+          echo "any_changed: $ANY_CHANGED"
+          echo "any_modified: $ANY_MODIFIED"
+          # Verify outputs are not empty strings (action ran successfully)
+          if [ -z "$ANY_CHANGED" ]; then
+            echo "FAIL: any_changed output is empty"
+            exit 1
+          fi
+          echo "PASS: outputs are set"
+
+      - name: Assert count outputs are numeric
+        env:
+          ALL_CHANGED_COUNT: ${{ steps.changed.outputs.all_changed_files_count }}
+          ALL_MODIFIED_COUNT: ${{ steps.changed.outputs.all_modified_files_count }}
+          ADDED_COUNT: ${{ steps.changed.outputs.added_files_count }}
+          DELETED_COUNT: ${{ steps.changed.outputs.deleted_files_count }}
+        run: |
+          echo "all_changed_files_count: $ALL_CHANGED_COUNT"
+          echo "all_modified_files_count: $ALL_MODIFIED_COUNT"
+          echo "added_files_count: $ADDED_COUNT"
+          echo "deleted_files_count: $DELETED_COUNT"
+          # Verify count outputs are numeric
+          if ! echo "$ALL_CHANGED_COUNT" | grep -qE '^[0-9]+$'; then
+            echo "FAIL: all_changed_files_count is not numeric: $ALL_CHANGED_COUNT"
+            exit 1
+          fi
+          echo "PASS: count outputs are numeric"

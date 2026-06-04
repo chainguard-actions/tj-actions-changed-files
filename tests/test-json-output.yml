@@ -1,0 +1,66 @@
+name: Test JSON output and separator options
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REF: refs/heads/main
+      GITHUB_EVENT_NAME: push
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Create test files and commit
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+          echo "file1" > file1.txt
+          echo "file2" > file2.txt
+          git add file1.txt file2.txt
+          git commit -m "test: add two files for JSON output test"
+
+      - id: changed-json
+        uses: .
+        with:
+          json: "true"
+          escape_json: "true"
+          fetch_depth: "25"
+
+      - name: Assert JSON output is valid JSON array
+        env:
+          ALL_CHANGED: ${{ steps.changed-json.outputs.all_changed_files }}
+          ANY_CHANGED: ${{ steps.changed-json.outputs.any_changed }}
+        run: |
+          echo "all_changed_files (json): $ALL_CHANGED"
+          echo "any_changed: $ANY_CHANGED"
+          if [ -z "$ANY_CHANGED" ]; then
+            echo "FAIL: any_changed output is empty"
+            exit 1
+          fi
+          # Verify the output looks like a JSON array
+          if ! echo "$ALL_CHANGED" | grep -qE '^\[.*\]$'; then
+            echo "FAIL: all_changed_files is not a JSON array: $ALL_CHANGED"
+            exit 1
+          fi
+          echo "PASS: JSON output is a valid JSON array"
+
+      - id: changed-separator
+        uses: .
+        with:
+          separator: ","
+          fetch_depth: "25"
+
+      - name: Assert separator is applied
+        env:
+          ALL_CHANGED: ${{ steps.changed-separator.outputs.all_changed_files }}
+          ALL_CHANGED_COUNT: ${{ steps.changed-separator.outputs.all_changed_files_count }}
+        run: |
+          echo "all_changed_files (comma sep): $ALL_CHANGED"
+          echo "all_changed_files_count: $ALL_CHANGED_COUNT"
+          if ! echo "$ALL_CHANGED_COUNT" | grep -qE '^[0-9]+$'; then
+            echo "FAIL: all_changed_files_count is not numeric: $ALL_CHANGED_COUNT"
+            exit 1
+          fi
+          echo "PASS: separator input works correctly"

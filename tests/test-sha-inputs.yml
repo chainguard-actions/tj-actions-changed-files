@@ -1,0 +1,69 @@
+name: Test sha and base_sha inputs
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REF: refs/heads/main
+      GITHUB_EVENT_NAME: push
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up two commits for comparison
+        id: setup
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+          # Record the current HEAD as base
+          BASE_SHA=$(git rev-parse HEAD)
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+
+          # Create a new commit
+          echo "# changed" >> README.md 2>/dev/null || echo "# changed" > README.md
+          git add README.md
+          git commit -m "test: modify README for sha test"
+
+          # Record the new HEAD as sha
+          HEAD_SHA=$(git rev-parse HEAD)
+          echo "sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+      - id: changed
+        uses: .
+        with:
+          sha: ${{ steps.setup.outputs.sha }}
+          base_sha: ${{ steps.setup.outputs.base_sha }}
+          fetch_depth: "25"
+
+      - name: Assert outputs are set when using sha and base_sha
+        env:
+          ALL_CHANGED: ${{ steps.changed.outputs.all_changed_files }}
+          ALL_CHANGED_COUNT: ${{ steps.changed.outputs.all_changed_files_count }}
+          ANY_CHANGED: ${{ steps.changed.outputs.any_changed }}
+        run: |
+          echo "all_changed_files: $ALL_CHANGED"
+          echo "all_changed_files_count: $ALL_CHANGED_COUNT"
+          echo "any_changed: $ANY_CHANGED"
+          if [ -z "$ANY_CHANGED" ]; then
+            echo "FAIL: any_changed output is empty"
+            exit 1
+          fi
+          if ! echo "$ALL_CHANGED_COUNT" | grep -qE '^[0-9]+$'; then
+            echo "FAIL: all_changed_files_count is not numeric: $ALL_CHANGED_COUNT"
+            exit 1
+          fi
+          echo "PASS: sha and base_sha inputs work correctly"
+
+      - name: Assert README.md is in changed files
+        env:
+          ALL_CHANGED: ${{ steps.changed.outputs.all_changed_files }}
+        run: |
+          echo "all_changed_files: $ALL_CHANGED"
+          if ! echo "$ALL_CHANGED" | grep -q "README.md"; then
+            echo "FAIL: README.md not found in all_changed_files"
+            exit 1
+          fi
+          echo "PASS: README.md is in changed files"

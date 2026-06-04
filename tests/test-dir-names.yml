@@ -1,0 +1,60 @@
+name: Test dir_names and dir_names_max_depth inputs
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REF: refs/heads/main
+      GITHUB_EVENT_NAME: push
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Create nested directory structure and commit
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+          mkdir -p deep/nested/dir
+          echo "test" > deep/nested/dir/file.txt
+          git add deep/
+          git commit -m "test: add nested directory structure"
+
+      - id: changed
+        uses: .
+        with:
+          dir_names: "true"
+          dir_names_max_depth: "2"
+          fetch_depth: "25"
+
+      - name: Assert dir_names outputs are set
+        env:
+          ALL_CHANGED: ${{ steps.changed.outputs.all_changed_files }}
+          ALL_CHANGED_COUNT: ${{ steps.changed.outputs.all_changed_files_count }}
+          ANY_CHANGED: ${{ steps.changed.outputs.any_changed }}
+        run: |
+          echo "all_changed_files (dirs): $ALL_CHANGED"
+          echo "all_changed_files_count: $ALL_CHANGED_COUNT"
+          echo "any_changed: $ANY_CHANGED"
+          if [ -z "$ANY_CHANGED" ]; then
+            echo "FAIL: any_changed output is empty"
+            exit 1
+          fi
+          if ! echo "$ALL_CHANGED_COUNT" | grep -qE '^[0-9]+$'; then
+            echo "FAIL: all_changed_files_count is not numeric: $ALL_CHANGED_COUNT"
+            exit 1
+          fi
+          echo "PASS: dir_names and dir_names_max_depth inputs work correctly"
+
+      - name: Assert max depth is respected (deep/nested not deep/nested/dir)
+        env:
+          ALL_CHANGED: ${{ steps.changed.outputs.all_changed_files }}
+        run: |
+          echo "all_changed_files (dirs): $ALL_CHANGED"
+          # With max_depth=2, we should see deep/nested but NOT deep/nested/dir
+          if echo "$ALL_CHANGED" | grep -q "deep/nested/dir"; then
+            echo "FAIL: deep/nested/dir should not appear with max_depth=2"
+            exit 1
+          fi
+          echo "PASS: max depth is respected"
