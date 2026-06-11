@@ -1,0 +1,68 @@
+name: Test dir_names and dir_names_max_depth inputs
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REF: refs/heads/main
+      GITHUB_EVENT_NAME: push
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up two commits with nested directory changes
+        id: setup
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+          # Record the current HEAD as base
+          BASE_SHA=$(git rev-parse HEAD)
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+
+          # Create a nested file change
+          mkdir -p level1/level2/level3
+          echo "deep file" > level1/level2/level3/deep.txt
+          git add level1/
+          git commit -m "Add nested directory structure"
+
+          HEAD_SHA=$(git rev-parse HEAD)
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+      - id: changed
+        uses: .
+        with:
+          sha: ${{ steps.setup.outputs.head_sha }}
+          base_sha: ${{ steps.setup.outputs.base_sha }}
+          dir_names: "true"
+          dir_names_max_depth: "2"
+          separator: " "
+          safe_output: "true"
+          fetch_depth: "25"
+
+      - name: Assert dir output is limited to max depth 2
+        env:
+          ALL_CHANGED: ${{ steps.changed.outputs.all_changed_files }}
+          ANY_CHANGED: ${{ steps.changed.outputs.any_changed }}
+          ALL_MODIFIED: ${{ steps.changed.outputs.all_modified_files }}
+        run: |
+          echo "all_changed_files (dirs): $ALL_CHANGED"
+          echo "any_changed: $ANY_CHANGED"
+          echo "all_modified_files (dirs): $ALL_MODIFIED"
+          if [ "$ANY_CHANGED" != "true" ]; then
+            echo "FAIL: expected any_changed=true but got '$ANY_CHANGED'"
+            exit 1
+          fi
+          # With dir_names_max_depth=2, level1/level2/level3 should be truncated to level1/level2
+          if echo "$ALL_CHANGED" | grep -q "level1/level2/level3"; then
+            echo "FAIL: expected depth to be limited to 2, but found level1/level2/level3 in output: $ALL_CHANGED"
+            exit 1
+          fi
+          if echo "$ALL_CHANGED" | grep -q "level1"; then
+            echo "PASS: directory output found and depth is limited correctly"
+          else
+            echo "FAIL: expected level1 directory in output but got: $ALL_CHANGED"
+            exit 1
+          fi

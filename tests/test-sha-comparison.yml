@@ -1,0 +1,62 @@
+name: Test sha and base_sha inputs
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REF: refs/heads/main
+      GITHUB_EVENT_NAME: push
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up two commits for comparison
+        id: setup
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+          # Record the current HEAD as base
+          BASE_SHA=$(git rev-parse HEAD)
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+
+          # Create a new commit
+          echo "new content" > sha-test-file.txt
+          git add sha-test-file.txt
+          git commit -m "Add sha-test-file.txt"
+
+          HEAD_SHA=$(git rev-parse HEAD)
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+      - id: changed
+        uses: .
+        with:
+          sha: ${{ steps.setup.outputs.head_sha }}
+          base_sha: ${{ steps.setup.outputs.base_sha }}
+          separator: " "
+          safe_output: "true"
+          fetch_depth: "25"
+
+      - name: Assert sha-test-file.txt is detected as added
+        env:
+          ADDED: ${{ steps.changed.outputs.added_files }}
+          ADDED_COUNT: ${{ steps.changed.outputs.added_files_count }}
+          ALL_CHANGED: ${{ steps.changed.outputs.all_changed_files }}
+          ANY_CHANGED: ${{ steps.changed.outputs.any_changed }}
+        run: |
+          echo "added_files: $ADDED"
+          echo "added_files_count: $ADDED_COUNT"
+          echo "all_changed_files: $ALL_CHANGED"
+          echo "any_changed: $ANY_CHANGED"
+          if [ "$ANY_CHANGED" != "true" ]; then
+            echo "FAIL: expected any_changed=true but got '$ANY_CHANGED'"
+            exit 1
+          fi
+          if echo "$ADDED" | grep -q "sha-test-file.txt"; then
+            echo "PASS: sha-test-file.txt found in added_files"
+          else
+            echo "FAIL: sha-test-file.txt not found in added_files: $ADDED"
+            exit 1
+          fi
