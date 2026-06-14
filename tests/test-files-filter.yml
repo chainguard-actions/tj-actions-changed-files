@@ -1,0 +1,112 @@
+name: Test files filter input
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REF: refs/heads/main
+      GITHUB_EVENT_NAME: push
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up git and create commits with multiple file types
+        id: setup
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+          # Record the base SHA
+          BASE_SHA=$(git rev-parse HEAD)
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+
+          # Create files of different types
+          echo "python content" > test-filter-script.py
+          echo "markdown content" > test-filter-doc.md
+          git add test-filter-script.py test-filter-doc.md
+          git commit -m "Add test files for filter test"
+
+          HEAD_SHA=$(git rev-parse HEAD)
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+      - id: changed-py
+        uses: .
+        with:
+          sha: ${{ steps.setup.outputs.head_sha }}
+          base_sha: ${{ steps.setup.outputs.base_sha }}
+          files: "**/*.py"
+          files_separator: "\n"
+          files_ignore: ""
+          files_ignore_separator: "\n"
+          files_from_source_file: ""
+          files_from_source_file_separator: "\n"
+          files_ignore_from_source_file: ""
+          files_ignore_from_source_file_separator: "\n"
+          files_yaml: ""
+          files_yaml_from_source_file: ""
+          files_yaml_from_source_file_separator: "\n"
+          files_ignore_yaml: ""
+          files_ignore_yaml_from_source_file: ""
+          files_ignore_yaml_from_source_file_separator: "\n"
+          separator: " "
+          safe_output: "true"
+          fetch_depth: "25"
+          json: "false"
+          escape_json: "true"
+          dir_names: "false"
+          dir_names_exclude_current_dir: "false"
+          dir_names_deleted_files_include_only_deleted_dirs: "false"
+          dir_names_include_files: ""
+          dir_names_include_files_separator: "\n"
+          quotepath: "true"
+          diff_relative: "true"
+          write_output_files: "false"
+          output_dir: ".github/outputs"
+          use_rest_api: "false"
+          fail_on_initial_diff_error: "false"
+          fail_on_submodule_diff_error: "false"
+          negation_patterns_first: "false"
+          matrix: "false"
+          exclude_submodules: "false"
+          fetch_missing_history_max_retries: "20"
+          use_posix_path_separator: "false"
+          tags_pattern: "*"
+          tags_ignore_pattern: ""
+          skip_initial_fetch: "false"
+          fetch_additional_submodule_history: "false"
+          since_last_remote_commit: "false"
+          include_all_old_new_renamed_files: "false"
+          old_new_separator: ","
+          old_new_files_separator: " "
+          output_renamed_files_as_deleted_and_added: "false"
+          recover_deleted_files: "false"
+          recover_deleted_files_to_destination: ""
+          recover_files: ""
+          recover_files_separator: "\n"
+          recover_files_ignore: ""
+          recover_files_ignore_separator: "\n"
+
+      - name: Assert only .py files are detected when filtering for py
+        env:
+          ANY_CHANGED: ${{ steps.changed-py.outputs.any_changed }}
+          ALL_CHANGED: ${{ steps.changed-py.outputs.all_changed_files }}
+          ONLY_CHANGED: ${{ steps.changed-py.outputs.only_changed }}
+        run: |
+          echo "any_changed: $ANY_CHANGED"
+          echo "all_changed_files: $ALL_CHANGED"
+          echo "only_changed: $ONLY_CHANGED"
+          if [ "$ANY_CHANGED" != "true" ]; then
+            echo "FAIL: expected any_changed=true for .py file filter, got: $ANY_CHANGED"
+            exit 1
+          fi
+          if [[ "$ALL_CHANGED" != *"test-filter-script.py"* ]]; then
+            echo "FAIL: expected 'test-filter-script.py' in all_changed_files, got: $ALL_CHANGED"
+            exit 1
+          fi
+          if [[ "$ALL_CHANGED" == *"test-filter-doc.md"* ]]; then
+            echo "FAIL: 'test-filter-doc.md' should NOT appear in .py-filtered output, got: $ALL_CHANGED"
+            exit 1
+          fi
+          echo "PASS: files filter correctly includes .py and excludes .md"

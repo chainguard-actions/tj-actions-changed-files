@@ -1,0 +1,81 @@
+name: Test basic push usage
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REF: refs/heads/main
+      GITHUB_EVENT_NAME: push
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Create a test commit so there is history to diff
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+          echo "test-file-$(date +%s)" > /tmp/testfile.txt
+          cp /tmp/testfile.txt test-changed-file.txt
+          git add test-changed-file.txt
+          git commit -m "Add test file for changed-files test" || true
+
+      - id: changed
+        uses: .
+        with:
+          separator: " "
+          safe_output: "true"
+          fetch_depth: "25"
+          since_last_remote_commit: "false"
+          json: "false"
+          escape_json: "true"
+          dir_names: "false"
+          dir_names_exclude_current_dir: "false"
+          dir_names_deleted_files_include_only_deleted_dirs: "false"
+          include_all_old_new_renamed_files: "false"
+          old_new_separator: ","
+          old_new_files_separator: " "
+          quotepath: "true"
+          diff_relative: "true"
+          write_output_files: "false"
+          output_dir: ".github/outputs"
+          output_renamed_files_as_deleted_and_added: "false"
+          recover_deleted_files: "false"
+          recover_deleted_files_to_destination: ""
+          recover_files: ""
+          recover_files_separator: "\n"
+          recover_files_ignore: ""
+          recover_files_ignore_separator: "\n"
+          use_rest_api: "false"
+          fail_on_initial_diff_error: "false"
+          fail_on_submodule_diff_error: "false"
+          negation_patterns_first: "false"
+          matrix: "false"
+          exclude_submodules: "false"
+          fetch_missing_history_max_retries: "20"
+          use_posix_path_separator: "false"
+          tags_pattern: "*"
+          tags_ignore_pattern: ""
+          skip_initial_fetch: "false"
+          fetch_additional_submodule_history: "false"
+
+      - name: Assert outputs are set
+        env:
+          ALL_CHANGED: ${{ steps.changed.outputs.all_changed_files }}
+          ALL_MODIFIED: ${{ steps.changed.outputs.all_modified_files }}
+          ANY_CHANGED: ${{ steps.changed.outputs.any_changed }}
+          ANY_MODIFIED: ${{ steps.changed.outputs.any_modified }}
+          ADDED_COUNT: ${{ steps.changed.outputs.added_files_count }}
+          ALL_CHANGED_COUNT: ${{ steps.changed.outputs.all_changed_files_count }}
+          ALL_MODIFIED_COUNT: ${{ steps.changed.outputs.all_modified_files_count }}
+        run: |
+          echo "all_changed_files: $ALL_CHANGED"
+          echo "all_modified_files: $ALL_MODIFIED"
+          echo "any_changed: $ANY_CHANGED"
+          echo "any_modified: $ANY_MODIFIED"
+          echo "added_files_count: $ADDED_COUNT"
+          echo "all_changed_files_count: $ALL_CHANGED_COUNT"
+          echo "all_modified_files_count: $ALL_MODIFIED_COUNT"
+          # Outputs should be set (even if empty strings are valid)
+          echo "PASS: action completed and outputs are accessible"

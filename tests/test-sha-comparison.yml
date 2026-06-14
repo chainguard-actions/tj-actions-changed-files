@@ -1,0 +1,90 @@
+name: Test sha and base_sha inputs
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REF: refs/heads/main
+      GITHUB_EVENT_NAME: push
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up git and create commits for comparison
+        id: setup
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+          # Record the base SHA (HEAD before any new commits)
+          BASE_SHA=$(git rev-parse HEAD)
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+
+          # Create a new file and commit it
+          echo "new-content-$(date +%s)" > test-sha-file.txt
+          git add test-sha-file.txt
+          git commit -m "Add test-sha-file.txt for sha comparison test"
+
+          # Record the new HEAD SHA
+          HEAD_SHA=$(git rev-parse HEAD)
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+      - id: changed
+        uses: .
+        with:
+          sha: ${{ steps.setup.outputs.head_sha }}
+          base_sha: ${{ steps.setup.outputs.base_sha }}
+          separator: " "
+          safe_output: "true"
+          fetch_depth: "25"
+          json: "false"
+          escape_json: "true"
+          dir_names: "false"
+          quotepath: "true"
+          diff_relative: "true"
+          write_output_files: "false"
+          output_dir: ".github/outputs"
+          use_rest_api: "false"
+          fail_on_initial_diff_error: "false"
+          fail_on_submodule_diff_error: "false"
+          negation_patterns_first: "false"
+          matrix: "false"
+          exclude_submodules: "false"
+          fetch_missing_history_max_retries: "20"
+          use_posix_path_separator: "false"
+          tags_pattern: "*"
+          tags_ignore_pattern: ""
+          skip_initial_fetch: "false"
+          fetch_additional_submodule_history: "false"
+          since_last_remote_commit: "false"
+          include_all_old_new_renamed_files: "false"
+          old_new_separator: ","
+          old_new_files_separator: " "
+          output_renamed_files_as_deleted_and_added: "false"
+          recover_deleted_files: "false"
+          recover_deleted_files_to_destination: ""
+          recover_files: ""
+          recover_files_separator: "\n"
+          recover_files_ignore: ""
+          recover_files_ignore_separator: "\n"
+          dir_names_exclude_current_dir: "false"
+          dir_names_deleted_files_include_only_deleted_dirs: "false"
+
+      - name: Assert added file is detected
+        env:
+          ADDED_FILES: ${{ steps.changed.outputs.added_files }}
+          ALL_CHANGED: ${{ steps.changed.outputs.all_changed_files }}
+          ANY_CHANGED: ${{ steps.changed.outputs.any_changed }}
+          ADDED_COUNT: ${{ steps.changed.outputs.added_files_count }}
+        run: |
+          echo "added_files: $ADDED_FILES"
+          echo "all_changed_files: $ALL_CHANGED"
+          echo "any_changed: $ANY_CHANGED"
+          echo "added_files_count: $ADDED_COUNT"
+          if [[ "$ADDED_FILES" != *"test-sha-file.txt"* ]]; then
+            echo "FAIL: expected 'test-sha-file.txt' in added_files, got: $ADDED_FILES"
+            exit 1
+          fi
+          echo "PASS: test-sha-file.txt found in added_files"
