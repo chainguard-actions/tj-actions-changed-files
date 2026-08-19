@@ -1,0 +1,102 @@
+name: Test files_yaml pattern matching
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_EVENT_NAME: push
+      GITHUB_REF: refs/heads/act-harness
+      GITHUB_REF_NAME: act-harness
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up git user
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+      - name: Create base commit with multiple file types
+        run: |
+          mkdir -p src docs
+          echo "source code" > src/main.py
+          echo "documentation" > docs/guide.md
+          echo "config" > config.yaml
+          git add src/ docs/ config.yaml
+          git commit -m "Base commit"
+
+      - name: Modify source and config files
+        run: |
+          echo "updated source" >> src/main.py
+          echo "updated config" >> config.yaml
+          git add src/main.py config.yaml
+          git commit -m "Update source and config"
+
+      - name: Capture SHAs for explicit comparison
+        id: shas
+        run: |
+          BASE_SHA=$(git rev-parse HEAD~1)
+          HEAD_SHA=$(git rev-parse HEAD)
+          echo "base_sha=$BASE_SHA" >> $GITHUB_OUTPUT
+          echo "head_sha=$HEAD_SHA" >> $GITHUB_OUTPUT
+          echo "Base SHA: $BASE_SHA"
+          echo "Head SHA: $HEAD_SHA"
+
+      - id: changed-files
+        uses: .
+        with:
+          base_sha: ${{ steps.shas.outputs.base_sha }}
+          sha: ${{ steps.shas.outputs.head_sha }}
+          skip_initial_fetch: "true"
+          files_yaml: |
+            source:
+              - src/**
+              - "*.py"
+            config:
+              - "*.yaml"
+              - "*.yml"
+            docs:
+              - docs/**
+              - "*.md"
+
+      - name: Assert source key is changed
+        env:
+          CHANGED_KEYS: ${{ steps.changed-files.outputs.changed_keys }}
+          MODIFIED_KEYS: ${{ steps.changed-files.outputs.modified_keys }}
+        run: |
+          echo "changed_keys: $CHANGED_KEYS"
+          echo "modified_keys: $MODIFIED_KEYS"
+          if [[ "$CHANGED_KEYS" != *"source"* ]] && [[ "$MODIFIED_KEYS" != *"source"* ]]; then
+            echo "FAIL: expected 'source' key in changed_keys or modified_keys"
+            exit 1
+          fi
+          echo "PASS: source key detected as changed"
+
+      - name: Assert config key is changed
+        env:
+          CHANGED_KEYS: ${{ steps.changed-files.outputs.changed_keys }}
+          MODIFIED_KEYS: ${{ steps.changed-files.outputs.modified_keys }}
+        run: |
+          echo "changed_keys: $CHANGED_KEYS"
+          echo "modified_keys: $MODIFIED_KEYS"
+          if [[ "$CHANGED_KEYS" != *"config"* ]] && [[ "$MODIFIED_KEYS" != *"config"* ]]; then
+            echo "FAIL: expected 'config' key in changed_keys or modified_keys"
+            exit 1
+          fi
+          echo "PASS: config key detected as changed"
+
+      - name: Assert docs key is NOT changed (docs were not modified)
+        env:
+          CHANGED_KEYS: ${{ steps.changed-files.outputs.changed_keys }}
+          MODIFIED_KEYS: ${{ steps.changed-files.outputs.modified_keys }}
+        run: |
+          echo "changed_keys: $CHANGED_KEYS"
+          echo "modified_keys: $MODIFIED_KEYS"
+          if [[ "$CHANGED_KEYS" == *"docs"* ]] || [[ "$MODIFIED_KEYS" == *"docs"* ]]; then
+            echo "FAIL: docs key should NOT be in changed/modified keys (docs were not modified)"
+            exit 1
+          fi
+          echo "PASS: docs key correctly not in changed/modified keys"

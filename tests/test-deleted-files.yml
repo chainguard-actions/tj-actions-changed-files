@@ -1,0 +1,95 @@
+name: Test deleted files detection
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_EVENT_NAME: push
+      GITHUB_REF: refs/heads/act-harness
+      GITHUB_REF_NAME: act-harness
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up git user
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+      - name: Create base commit with a file to be deleted
+        run: |
+          echo "file to delete" > to-delete.txt
+          echo "file to keep" > to-keep.txt
+          git add to-delete.txt to-keep.txt
+          git commit -m "Base commit with files"
+
+      - name: Delete a file in a second commit
+        run: |
+          git rm to-delete.txt
+          git commit -m "Delete a file"
+
+      - name: Capture SHAs for explicit comparison
+        id: shas
+        run: |
+          BASE_SHA=$(git rev-parse HEAD~1)
+          HEAD_SHA=$(git rev-parse HEAD)
+          echo "base_sha=$BASE_SHA" >> $GITHUB_OUTPUT
+          echo "head_sha=$HEAD_SHA" >> $GITHUB_OUTPUT
+          echo "Base SHA: $BASE_SHA"
+          echo "Head SHA: $HEAD_SHA"
+
+      - id: changed-files
+        uses: .
+        with:
+          base_sha: ${{ steps.shas.outputs.base_sha }}
+          sha: ${{ steps.shas.outputs.head_sha }}
+          skip_initial_fetch: "true"
+
+      - name: Assert to-delete.txt is in deleted_files
+        env:
+          DELETED: ${{ steps.changed-files.outputs.deleted_files }}
+          DELETED_COUNT: ${{ steps.changed-files.outputs.deleted_files_count }}
+        run: |
+          echo "deleted_files: $DELETED"
+          echo "deleted_files_count: $DELETED_COUNT"
+          if [[ "$DELETED" != *"to-delete.txt"* ]]; then
+            echo "FAIL: expected to-delete.txt in deleted_files"
+            exit 1
+          fi
+          echo "PASS: to-delete.txt found in deleted_files"
+
+      - name: Assert deleted_files_count is at least 1
+        env:
+          DELETED_COUNT: ${{ steps.changed-files.outputs.deleted_files_count }}
+        run: |
+          echo "deleted_files_count: $DELETED_COUNT"
+          if [ -z "$DELETED_COUNT" ] || [ "$DELETED_COUNT" -lt 1 ]; then
+            echo "FAIL: expected deleted_files_count >= 1, got: $DELETED_COUNT"
+            exit 1
+          fi
+          echo "PASS: deleted_files_count is $DELETED_COUNT"
+
+      - name: Assert any_deleted is true
+        env:
+          ANY_DELETED: ${{ steps.changed-files.outputs.any_deleted }}
+        run: |
+          echo "any_deleted: $ANY_DELETED"
+          if [ "$ANY_DELETED" != "true" ]; then
+            echo "FAIL: expected any_deleted to be true"
+            exit 1
+          fi
+          echo "PASS: any_deleted is true"
+
+      - name: Assert to-keep.txt is NOT in deleted_files
+        env:
+          DELETED: ${{ steps.changed-files.outputs.deleted_files }}
+        run: |
+          echo "deleted_files: $DELETED"
+          if [[ "$DELETED" == *"to-keep.txt"* ]]; then
+            echo "FAIL: to-keep.txt should NOT be in deleted_files"
+            exit 1
+          fi
+          echo "PASS: to-keep.txt correctly not in deleted_files"

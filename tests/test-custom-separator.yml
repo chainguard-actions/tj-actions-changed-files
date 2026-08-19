@@ -1,0 +1,94 @@
+name: Test custom separator output
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_EVENT_NAME: push
+      GITHUB_REF: refs/heads/act-harness
+      GITHUB_REF_NAME: act-harness
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up git user
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+      - name: Create base commit
+        run: |
+          echo "file one" > file-one.txt
+          git add file-one.txt
+          git commit -m "Base commit"
+
+      - name: Add multiple files in second commit
+        run: |
+          echo "file two" > file-two.txt
+          echo "file three" > file-three.txt
+          git add file-two.txt file-three.txt
+          git commit -m "Add two more files"
+
+      - name: Capture SHAs for explicit comparison
+        id: shas
+        run: |
+          BASE_SHA=$(git rev-parse HEAD~1)
+          HEAD_SHA=$(git rev-parse HEAD)
+          echo "base_sha=$BASE_SHA" >> $GITHUB_OUTPUT
+          echo "head_sha=$HEAD_SHA" >> $GITHUB_OUTPUT
+          echo "Base SHA: $BASE_SHA"
+          echo "Head SHA: $HEAD_SHA"
+
+      - name: Run with default separator (space)
+        id: default-sep
+        uses: .
+        with:
+          base_sha: ${{ steps.shas.outputs.base_sha }}
+          sha: ${{ steps.shas.outputs.head_sha }}
+          skip_initial_fetch: "true"
+
+      - name: Run with custom comma separator
+        id: comma-sep
+        uses: .
+        with:
+          base_sha: ${{ steps.shas.outputs.base_sha }}
+          sha: ${{ steps.shas.outputs.head_sha }}
+          skip_initial_fetch: "true"
+          separator: ","
+
+      - name: Assert default separator output contains space-separated files
+        env:
+          ADDED_DEFAULT: ${{ steps.default-sep.outputs.added_files }}
+        run: |
+          echo "added_files (default sep): $ADDED_DEFAULT"
+          if [ -z "$ADDED_DEFAULT" ]; then
+            echo "FAIL: expected non-empty added_files with default separator"
+            exit 1
+          fi
+          # With default space separator and multiple files, should contain a space
+          FILE_COUNT=$(echo "$ADDED_DEFAULT" | wc -w)
+          echo "File count: $FILE_COUNT"
+          if [ "$FILE_COUNT" -lt 2 ]; then
+            echo "FAIL: expected at least 2 files in output"
+            exit 1
+          fi
+          echo "PASS: default separator output has multiple space-separated files"
+
+      - name: Assert comma separator output contains comma-separated files
+        env:
+          ADDED_COMMA: ${{ steps.comma-sep.outputs.added_files }}
+        run: |
+          echo "added_files (comma sep): $ADDED_COMMA"
+          if [ -z "$ADDED_COMMA" ]; then
+            echo "FAIL: expected non-empty added_files with comma separator"
+            exit 1
+          fi
+          # With comma separator and multiple files, should contain a comma
+          if [[ "$ADDED_COMMA" != *","* ]]; then
+            echo "FAIL: expected comma in output with comma separator"
+            exit 1
+          fi
+          echo "PASS: comma separator output contains commas"

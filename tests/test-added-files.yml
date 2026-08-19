@@ -1,0 +1,84 @@
+name: Test added files detection
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_EVENT_NAME: push
+      GITHUB_REF: refs/heads/act-harness
+      GITHUB_REF_NAME: act-harness
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up git user
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+      - name: Create a base commit
+        run: |
+          echo "base content" > base-file.txt
+          git add base-file.txt
+          git commit -m "Base commit"
+
+      - name: Add a new file in a second commit
+        run: |
+          echo "new file content" > new-file.txt
+          git add new-file.txt
+          git commit -m "Add new file"
+
+      - name: Capture SHAs for explicit comparison
+        id: shas
+        run: |
+          BASE_SHA=$(git rev-parse HEAD~1)
+          HEAD_SHA=$(git rev-parse HEAD)
+          echo "base_sha=$BASE_SHA" >> $GITHUB_OUTPUT
+          echo "head_sha=$HEAD_SHA" >> $GITHUB_OUTPUT
+          echo "Base SHA: $BASE_SHA"
+          echo "Head SHA: $HEAD_SHA"
+
+      - id: changed-files
+        uses: .
+        with:
+          base_sha: ${{ steps.shas.outputs.base_sha }}
+          sha: ${{ steps.shas.outputs.head_sha }}
+          skip_initial_fetch: "true"
+
+      - name: Assert new-file.txt is in added_files
+        env:
+          ADDED: ${{ steps.changed-files.outputs.added_files }}
+          ADDED_COUNT: ${{ steps.changed-files.outputs.added_files_count }}
+        run: |
+          echo "added_files: $ADDED"
+          echo "added_files_count: $ADDED_COUNT"
+          if [[ "$ADDED" != *"new-file.txt"* ]]; then
+            echo "FAIL: expected new-file.txt in added_files"
+            exit 1
+          fi
+          echo "PASS: new-file.txt found in added_files"
+
+      - name: Assert added_files_count is at least 1
+        env:
+          ADDED_COUNT: ${{ steps.changed-files.outputs.added_files_count }}
+        run: |
+          echo "added_files_count: $ADDED_COUNT"
+          if [ -z "$ADDED_COUNT" ] || [ "$ADDED_COUNT" -lt 1 ]; then
+            echo "FAIL: expected added_files_count >= 1, got: $ADDED_COUNT"
+            exit 1
+          fi
+          echo "PASS: added_files_count is $ADDED_COUNT"
+
+      - name: Assert any_added is true
+        env:
+          ANY_ADDED: ${{ steps.changed-files.outputs.any_added }}
+        run: |
+          echo "any_added: $ANY_ADDED"
+          if [ "$ANY_ADDED" != "true" ]; then
+            echo "FAIL: expected any_added to be true"
+            exit 1
+          fi
+          echo "PASS: any_added is true"

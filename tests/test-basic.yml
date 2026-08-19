@@ -1,4 +1,4 @@
-name: Test dir_names output mode
+name: Test basic changed files detection
 on:
   workflow_dispatch:
 jobs:
@@ -15,6 +15,7 @@ jobs:
         id: shas
         run: |
           HEAD_SHA=$(git rev-parse HEAD)
+          # Use HEAD~1 as base if it exists, otherwise use HEAD itself with skip_same_sha
           if git rev-parse HEAD~1 >/dev/null 2>&1; then
             BASE_SHA=$(git rev-parse HEAD~1)
           else
@@ -30,8 +31,6 @@ jobs:
         with:
           base_sha: ${{ steps.shas.outputs.base_sha }}
           sha: ${{ steps.shas.outputs.head_sha }}
-          dir_names: "true"
-          dir_names_max_depth: "2"
           skip_initial_fetch: "true"
           skip_same_sha: "true"
 
@@ -41,39 +40,29 @@ jobs:
         run: |
           echo "all_changed_and_modified_files_count: $ALL_COUNT"
           if ! echo "$ALL_COUNT" | grep -qE '^[0-9]+$'; then
-            echo "FAIL: all_changed_and_modified_files_count is not numeric: $ALL_COUNT"
+            echo "FAIL: expected a numeric count, got: $ALL_COUNT"
             exit 1
           fi
           echo "PASS: count is numeric: $ALL_COUNT"
 
-      - name: Assert dir_names output does not contain individual filenames with extensions
-        env:
-          ALL_CHANGED: ${{ steps.changed.outputs.all_changed_and_modified_files }}
-          ALL_COUNT: ${{ steps.changed.outputs.all_changed_and_modified_files_count }}
-        run: |
-          echo "all_changed_and_modified_files (dir_names): $ALL_CHANGED"
-          echo "count: $ALL_COUNT"
-          # When dir_names is true and files changed, output should be directory paths
-          # Each entry should not look like a file with a common extension
-          # (directories don't typically have .yml, .txt, .js etc. extensions)
-          if [ "$ALL_COUNT" -gt 0 ]; then
-            # Check that output is non-empty when count > 0
-            if [ -z "$ALL_CHANGED" ]; then
-              echo "FAIL: count is $ALL_COUNT but output is empty"
-              exit 1
-            fi
-            echo "PASS: dir_names output is non-empty: $ALL_CHANGED"
-          else
-            echo "PASS: no changed files (same SHA or no diff)"
-          fi
-
-      - name: Assert any_changed is boolean
+      - name: Assert any_changed output is true or false
         env:
           ANY_CHANGED: ${{ steps.changed.outputs.any_changed }}
         run: |
           echo "any_changed: $ANY_CHANGED"
           if [ "$ANY_CHANGED" != "true" ] && [ "$ANY_CHANGED" != "false" ]; then
-            echo "FAIL: any_changed must be 'true' or 'false', got: $ANY_CHANGED"
+            echo "FAIL: expected 'true' or 'false', got: $ANY_CHANGED"
             exit 1
           fi
           echo "PASS: any_changed=$ANY_CHANGED"
+
+      - name: Assert all_modified_files_count is numeric
+        env:
+          MOD_COUNT: ${{ steps.changed.outputs.all_modified_files_count }}
+        run: |
+          echo "all_modified_files_count: $MOD_COUNT"
+          if ! echo "$MOD_COUNT" | grep -qE '^[0-9]+$'; then
+            echo "FAIL: expected a numeric count, got: $MOD_COUNT"
+            exit 1
+          fi
+          echo "PASS: all_modified_files_count=$MOD_COUNT"

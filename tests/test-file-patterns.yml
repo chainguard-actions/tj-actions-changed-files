@@ -1,0 +1,81 @@
+name: Test file pattern filtering
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REF_NAME: act-harness
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Get base and head SHAs from existing history
+        id: shas
+        run: |
+          HEAD_SHA=$(git rev-parse HEAD)
+          if git rev-parse HEAD~1 >/dev/null 2>&1; then
+            BASE_SHA=$(git rev-parse HEAD~1)
+          else
+            BASE_SHA=$HEAD_SHA
+          fi
+          echo "head_sha=$HEAD_SHA" >> $GITHUB_OUTPUT
+          echo "base_sha=$BASE_SHA" >> $GITHUB_OUTPUT
+          echo "Head SHA: $HEAD_SHA"
+          echo "Base SHA: $BASE_SHA"
+
+      - name: Run action with yml pattern (action files exist in repo)
+        id: changed-yml
+        uses: .
+        with:
+          base_sha: ${{ steps.shas.outputs.base_sha }}
+          sha: ${{ steps.shas.outputs.head_sha }}
+          files: "**/*.yml"
+          skip_initial_fetch: "true"
+          skip_same_sha: "true"
+
+      - name: Assert any_changed is boolean for yml pattern
+        env:
+          ANY_CHANGED: ${{ steps.changed-yml.outputs.any_changed }}
+          ALL_CHANGED: ${{ steps.changed-yml.outputs.all_changed_files }}
+        run: |
+          echo "any_changed (yml): $ANY_CHANGED"
+          echo "all_changed_files (yml): $ALL_CHANGED"
+          if [ "$ANY_CHANGED" != "true" ] && [ "$ANY_CHANGED" != "false" ]; then
+            echo "FAIL: any_changed must be 'true' or 'false', got: $ANY_CHANGED"
+            exit 1
+          fi
+          echo "PASS: any_changed=$ANY_CHANGED for yml pattern"
+
+      - name: Run action with nonexistent pattern
+        id: changed-nonexistent
+        uses: .
+        with:
+          base_sha: ${{ steps.shas.outputs.base_sha }}
+          sha: ${{ steps.shas.outputs.head_sha }}
+          files: "**/*.nonexistent_extension_xyz"
+          skip_initial_fetch: "true"
+          skip_same_sha: "true"
+
+      - name: Assert any_changed is false for nonexistent pattern
+        env:
+          ANY_CHANGED: ${{ steps.changed-nonexistent.outputs.any_changed }}
+        run: |
+          echo "any_changed (nonexistent): $ANY_CHANGED"
+          if [ "$ANY_CHANGED" != "false" ]; then
+            echo "FAIL: expected any_changed=false for nonexistent pattern, got: $ANY_CHANGED"
+            exit 1
+          fi
+          echo "PASS: any_changed=false for nonexistent file pattern"
+
+      - name: Assert all_changed_files is empty for nonexistent pattern
+        env:
+          ALL_CHANGED: ${{ steps.changed-nonexistent.outputs.all_changed_files }}
+        run: |
+          echo "all_changed_files (nonexistent): $ALL_CHANGED"
+          if [ -n "$ALL_CHANGED" ]; then
+            echo "FAIL: expected empty all_changed_files for nonexistent pattern, got: $ALL_CHANGED"
+            exit 1
+          fi
+          echo "PASS: all_changed_files is empty for nonexistent pattern"

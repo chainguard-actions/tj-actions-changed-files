@@ -1,0 +1,81 @@
+name: Test explicit base SHA comparison
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_EVENT_NAME: push
+      GITHUB_REF: refs/heads/act-harness
+      GITHUB_REF_NAME: act-harness
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up git user
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+      - name: Create multiple commits to establish history
+        run: |
+          echo "first file" > first.txt
+          git add first.txt
+          git commit -m "First commit"
+
+          echo "second file" > second.txt
+          git add second.txt
+          git commit -m "Second commit"
+
+          echo "third file" > third.txt
+          git add third.txt
+          git commit -m "Third commit"
+
+      - name: Capture SHAs for comparison spanning 2 commits
+        id: shas
+        run: |
+          # Use HEAD~2 as base so we compare the last 2 commits
+          BASE_SHA=$(git rev-parse HEAD~2)
+          HEAD_SHA=$(git rev-parse HEAD)
+          echo "base_sha=$BASE_SHA" >> $GITHUB_OUTPUT
+          echo "head_sha=$HEAD_SHA" >> $GITHUB_OUTPUT
+          echo "Using base SHA: $BASE_SHA"
+          echo "Using head SHA: $HEAD_SHA"
+
+      - name: Run action with explicit base_sha spanning 2 commits
+        id: action
+        uses: .
+        with:
+          base_sha: ${{ steps.shas.outputs.base_sha }}
+          sha: ${{ steps.shas.outputs.head_sha }}
+          skip_initial_fetch: "true"
+
+      - name: Assert second.txt and third.txt are in changed files
+        env:
+          ALL_CHANGED: ${{ steps.action.outputs.all_changed_and_modified_files }}
+          ADDED: ${{ steps.action.outputs.added_files }}
+        run: |
+          echo "all_changed_and_modified_files: $ALL_CHANGED"
+          echo "added_files: $ADDED"
+          if [[ "$ADDED" != *"second.txt"* ]] && [[ "$ALL_CHANGED" != *"second.txt"* ]]; then
+            echo "FAIL: expected second.txt in changed files"
+            exit 1
+          fi
+          if [[ "$ADDED" != *"third.txt"* ]] && [[ "$ALL_CHANGED" != *"third.txt"* ]]; then
+            echo "FAIL: expected third.txt in changed files"
+            exit 1
+          fi
+          echo "PASS: second.txt and third.txt found in changed files"
+
+      - name: Assert first.txt is NOT in changed files (it's the base)
+        env:
+          ALL_CHANGED: ${{ steps.action.outputs.all_changed_and_modified_files }}
+        run: |
+          echo "all_changed_and_modified_files: $ALL_CHANGED"
+          if [[ "$ALL_CHANGED" == *"first.txt"* ]]; then
+            echo "FAIL: first.txt should NOT be in changed files (it was in the base commit)"
+            exit 1
+          fi
+          echo "PASS: first.txt correctly excluded from changed files"

@@ -1,45 +1,84 @@
-name: Test basic push scenario
+name: Test basic push - changed files detection
 on:
   workflow_dispatch:
+
 jobs:
   test:
     runs-on: ubuntu-latest
     env:
-      GITHUB_REF: refs/heads/main
       GITHUB_EVENT_NAME: push
+      GITHUB_REF: refs/heads/act-harness
+      GITHUB_REF_NAME: act-harness
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
 
-      - name: Create a test commit so there is a diff
+      - name: Set up git user
         run: |
           git config user.email "test@example.com"
           git config user.name "Test User"
-          echo "test file" > test-changed-file.txt
-          git add test-changed-file.txt
-          git commit -m "Add test file"
 
-      - id: changed
+      - name: Create initial commit with a file
+        run: |
+          echo "initial content" > test-file.txt
+          git add test-file.txt
+          git commit -m "Initial commit with test file"
+
+      - name: Modify file to create a second commit
+        run: |
+          echo "modified content" >> test-file.txt
+          git add test-file.txt
+          git commit -m "Modify test file"
+
+      - name: Capture SHAs for explicit comparison
+        id: shas
+        run: |
+          BASE_SHA=$(git rev-parse HEAD~1)
+          HEAD_SHA=$(git rev-parse HEAD)
+          echo "base_sha=$BASE_SHA" >> $GITHUB_OUTPUT
+          echo "head_sha=$HEAD_SHA" >> $GITHUB_OUTPUT
+          echo "Base SHA: $BASE_SHA"
+          echo "Head SHA: $HEAD_SHA"
+
+      - id: changed-files
         uses: .
         with:
-          separator: " "
-          fetch_depth: "25"
-          since_last_remote_commit: "false"
-          safe_output: "true"
+          base_sha: ${{ steps.shas.outputs.base_sha }}
+          sha: ${{ steps.shas.outputs.head_sha }}
+          skip_initial_fetch: "true"
 
-      - name: Assert outputs are set
+      - name: Assert all_changed_and_modified_files is not empty
         env:
-          ALL_CHANGED: ${{ steps.changed.outputs.all_changed_files }}
-          ANY_CHANGED: ${{ steps.changed.outputs.any_changed }}
-          ALL_MODIFIED: ${{ steps.changed.outputs.all_modified_files }}
-          ADDED_COUNT: ${{ steps.changed.outputs.added_files_count }}
+          ALL_CHANGED: ${{ steps.changed-files.outputs.all_changed_and_modified_files }}
+          ALL_CHANGED_COUNT: ${{ steps.changed-files.outputs.all_changed_and_modified_files_count }}
         run: |
-          echo "all_changed_files: $ALL_CHANGED"
-          echo "any_changed: $ANY_CHANGED"
-          echo "all_modified_files: $ALL_MODIFIED"
-          echo "added_files_count: $ADDED_COUNT"
-          if [ -z "$ALL_CHANGED" ] && [ "$ANY_CHANGED" != "true" ]; then
-            echo "WARN: no changed files detected (may be expected in shallow clone)"
+          echo "all_changed_and_modified_files: $ALL_CHANGED"
+          echo "all_changed_and_modified_files_count: $ALL_CHANGED_COUNT"
+          if [ -z "$ALL_CHANGED" ]; then
+            echo "FAIL: expected all_changed_and_modified_files to be non-empty"
+            exit 1
           fi
-          echo "PASS: action completed successfully"
+          echo "PASS: changed files detected"
+
+      - name: Assert test-file.txt is in modified files
+        env:
+          MODIFIED: ${{ steps.changed-files.outputs.modified_files }}
+        run: |
+          echo "modified_files: $MODIFIED"
+          if [[ "$MODIFIED" != *"test-file.txt"* ]]; then
+            echo "FAIL: expected test-file.txt in modified_files"
+            exit 1
+          fi
+          echo "PASS: test-file.txt found in modified_files"
+
+      - name: Assert any_modified is true
+        env:
+          ANY_MODIFIED: ${{ steps.changed-files.outputs.any_modified }}
+        run: |
+          echo "any_modified: $ANY_MODIFIED"
+          if [ "$ANY_MODIFIED" != "true" ]; then
+            echo "FAIL: expected any_modified to be true"
+            exit 1
+          fi
+          echo "PASS: any_modified is true"

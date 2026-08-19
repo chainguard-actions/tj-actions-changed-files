@@ -1,0 +1,101 @@
+name: Test files_ignore pattern filtering
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REF_NAME: act-harness
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Get base and head SHAs from existing history
+        id: shas
+        run: |
+          HEAD_SHA=$(git rev-parse HEAD)
+          if git rev-parse HEAD~1 >/dev/null 2>&1; then
+            BASE_SHA=$(git rev-parse HEAD~1)
+          else
+            BASE_SHA=$HEAD_SHA
+          fi
+          echo "head_sha=$HEAD_SHA" >> $GITHUB_OUTPUT
+          echo "base_sha=$BASE_SHA" >> $GITHUB_OUTPUT
+          echo "Head SHA: $HEAD_SHA"
+          echo "Base SHA: $BASE_SHA"
+
+      - name: Run action without ignore pattern
+        id: changed-no-ignore
+        uses: .
+        with:
+          base_sha: ${{ steps.shas.outputs.base_sha }}
+          sha: ${{ steps.shas.outputs.head_sha }}
+          skip_initial_fetch: "true"
+          skip_same_sha: "true"
+
+      - name: Run action with yml files ignored
+        id: changed-ignore-yml
+        uses: .
+        with:
+          base_sha: ${{ steps.shas.outputs.base_sha }}
+          sha: ${{ steps.shas.outputs.head_sha }}
+          files_ignore: "**/*.yml"
+          skip_initial_fetch: "true"
+          skip_same_sha: "true"
+
+      - name: Assert ignored files are excluded from output
+        env:
+          ALL_NO_IGNORE: ${{ steps.changed-no-ignore.outputs.all_changed_and_modified_files }}
+          ALL_WITH_IGNORE: ${{ steps.changed-ignore-yml.outputs.all_changed_and_modified_files }}
+        run: |
+          echo "all_changed_and_modified_files (no ignore): $ALL_NO_IGNORE"
+          echo "all_changed_and_modified_files (ignore yml): $ALL_WITH_IGNORE"
+          # The output with yml ignored should not contain .yml files
+          if echo "$ALL_WITH_IGNORE" | grep -q "\.yml"; then
+            echo "FAIL: .yml files should be ignored but found in output: $ALL_WITH_IGNORE"
+            exit 1
+          fi
+          echo "PASS: .yml files correctly excluded from output"
+
+      - name: Assert count with ignore is less than or equal to count without ignore
+        env:
+          COUNT_NO_IGNORE: ${{ steps.changed-no-ignore.outputs.all_changed_and_modified_files_count }}
+          COUNT_WITH_IGNORE: ${{ steps.changed-ignore-yml.outputs.all_changed_and_modified_files_count }}
+        run: |
+          echo "count (no ignore): $COUNT_NO_IGNORE"
+          echo "count (ignore yml): $COUNT_WITH_IGNORE"
+          if ! echo "$COUNT_NO_IGNORE" | grep -qE '^[0-9]+$'; then
+            echo "FAIL: count_no_ignore is not numeric: $COUNT_NO_IGNORE"
+            exit 1
+          fi
+          if ! echo "$COUNT_WITH_IGNORE" | grep -qE '^[0-9]+$'; then
+            echo "FAIL: count_with_ignore is not numeric: $COUNT_WITH_IGNORE"
+            exit 1
+          fi
+          if [ "$COUNT_WITH_IGNORE" -gt "$COUNT_NO_IGNORE" ]; then
+            echo "FAIL: count with ignore ($COUNT_WITH_IGNORE) should be <= count without ignore ($COUNT_NO_IGNORE)"
+            exit 1
+          fi
+          echo "PASS: count with ignore ($COUNT_WITH_IGNORE) <= count without ignore ($COUNT_NO_IGNORE)"
+
+      - name: Run action ignoring everything
+        id: changed-ignore-all
+        uses: .
+        with:
+          base_sha: ${{ steps.shas.outputs.base_sha }}
+          sha: ${{ steps.shas.outputs.head_sha }}
+          files_ignore: "**/*"
+          skip_initial_fetch: "true"
+          skip_same_sha: "true"
+
+      - name: Assert any_changed is false when all files are ignored
+        env:
+          ANY_CHANGED: ${{ steps.changed-ignore-all.outputs.any_changed }}
+        run: |
+          echo "any_changed (ignore all): $ANY_CHANGED"
+          if [ "$ANY_CHANGED" != "false" ]; then
+            echo "FAIL: expected any_changed=false when all files are ignored, got: $ANY_CHANGED"
+            exit 1
+          fi
+          echo "PASS: any_changed=false when all files are ignored"

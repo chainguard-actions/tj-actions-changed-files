@@ -1,0 +1,206 @@
+name: Issue Comment Job Example
+
+permissions:
+   contents: read
+
+on:
+  issue_comment:
+
+jobs:
+  pr_commented:
+    # This job only runs for pull request comments
+    name: PR comment
+    if: ${{ github.event.issue.pull_request }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo A comment on PR $NUMBER
+        env:
+          NUMBER: ${{ github.event.issue.number }}
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      - name: Dump GitHub context
+        env:
+          GITHUB_CONTEXT: ${{ toJson(github) }}
+        run: echo "$GITHUB_CONTEXT"
+
+      - name: Run changed-files with defaults
+        id: changed-files
+        uses: ./
+
+      - name: Show output
+        env:
+          CHANGED_FILES_OUTPUTS: ${{ toJSON(steps.changed-files.outputs) }}
+        run: |
+          echo "$CHANGED_FILES_OUTPUTS"
+        shell:
+          bash
+
+      - name: Run changed-files for old new filenames test rename
+        id: changed-files-all-old-new-renamed-files
+        uses: ./
+        with:
+          base_sha: d1c0ee4
+          sha: 4d04215
+          fetch_depth: 60000
+          include_all_old_new_renamed_files: true
+
+      - name: Show output
+        env:
+          CHANGED_FILES_OUTPUTS: ${{ toJSON(steps.changed-files-all-old-new-renamed-files.outputs) }}
+        run: |
+          echo "$CHANGED_FILES_OUTPUTS"
+        shell:
+          bash
+
+      - name: Show output
+        env:
+          CHANGED_FILES_OUTPUTS: ${{ toJSON(steps.changed-files-all-old-new-renamed-files.outputs) }}
+        run: |
+          echo "$CHANGED_FILES_OUTPUTS"
+        shell:
+          bash
+
+      - name: Check all_old_new_renamed_files output on non windows platform
+        if: "!contains(steps.changed-files-all-old-new-renamed-files.outputs.all_old_new_renamed_files, 'test/test rename 1.txt,test/test rename-1.txt') && runner.os != 'Windows'"
+        env:
+          ALL_OLD_NEW_RENAMED_FILES: ${{ steps.changed-files-all-old-new-renamed-files.outputs.all_old_new_renamed_files }}
+        run: |
+          echo "Invalid output: Expected to include (test/test rename 1.txt,test/test rename-1.txt) got ($ALL_OLD_NEW_RENAMED_FILES)"
+          exit 1
+        shell:
+          bash
+
+      - name: Check all_old_new_renamed_files output on windows platform
+        if: "!contains(steps.changed-files-all-old-new-renamed-files.outputs.all_old_new_renamed_files, 'test\\test rename 1.txt,test\\test rename-1.txt') && runner.os == 'Windows'"
+        env:
+          ALL_OLD_NEW_RENAMED_FILES: ${{ steps.changed-files-all-old-new-renamed-files.outputs.all_old_new_renamed_files }}
+        run: |
+          echo "Invalid output: Expected to not include (test\test rename 1.txt,test\test rename-1.txt) got ($ALL_OLD_NEW_RENAMED_FILES)"
+          exit 1
+        shell:
+          bash
+
+      - name: Check the renamed_files output on non windows platform
+        if: "!contains(steps.changed-files-all-old-new-renamed-files.outputs.renamed_files, 'test/test rename-1.txt') && runner.os != 'Windows'"
+        env:
+          RENAMED_FILES: ${{ steps.changed-files-all-old-new-renamed-files.outputs.renamed_files }}
+        run: |
+          echo "Invalid output: Expected to include (test/test rename-1.txt) got ($RENAMED_FILES)"
+          exit 1
+        shell:
+          bash
+
+      - name: Check the renamed_files output on windows platform
+        if: "!contains(steps.changed-files-all-old-new-renamed-files.outputs.renamed_files, 'test\\test rename-1.txt') && runner.os == 'Windows'"
+        env:
+          RENAMED_FILES: ${{ steps.changed-files-all-old-new-renamed-files.outputs.renamed_files }}
+        run: |
+          echo "Invalid output: Expected to not include (test\test rename-1.txt) got ($RENAMED_FILES)"
+          exit 1
+        shell:
+          bash
+
+  issue_commented:
+    # This job only runs for issue comments
+    name: Issue comment
+    if: ${{ !github.event.issue.pull_request }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo A comment on issue $NUMBER
+        env:
+          NUMBER: ${{ github.event.issue.number }}
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      - name: Dump GitHub context
+        env:
+          GITHUB_CONTEXT: ${{ toJson(github) }}
+        run: echo "$GITHUB_CONTEXT"
+
+      - name: Run changed-files with defaults
+        id: changed-files
+        uses: ./
+
+      - name: Show output
+        env:
+          CHANGED_FILES_OUTPUTS: ${{ toJSON(steps.changed-files.outputs) }}
+        run: |
+          echo "$CHANGED_FILES_OUTPUTS"
+        shell:
+          bash
+
+      - name: Run changed-files for old new filenames test rename
+        id: changed-files-all-old-new-renamed-files
+        uses: ./
+        with:
+          base_sha: d1c0ee4
+          sha: 4d04215
+          fetch_depth: 60000
+          include_all_old_new_renamed_files: true
+
+      - name: Show output
+        env:
+          CHANGED_FILES_OUTPUTS: ${{ toJSON(steps.changed-files-all-old-new-renamed-files.outputs) }}
+        run: |
+          echo "$CHANGED_FILES_OUTPUTS"
+        shell:
+          bash
+
+      - name: Show output
+        env:
+          CHANGED_FILES_OUTPUTS: ${{ toJSON(steps.changed-files-all-old-new-renamed-files.outputs) }}
+        run: |
+          echo "$CHANGED_FILES_OUTPUTS"
+        shell:
+          bash
+
+      - name: Check all_old_new_renamed_files output on non windows platform
+        if: "!contains(steps.changed-files-all-old-new-renamed-files.outputs.all_old_new_renamed_files, 'test/test rename 1.txt,test/test rename-1.txt') && runner.os != 'Windows'"
+        env:
+          ALL_OLD_NEW_RENAMED_FILES: ${{ steps.changed-files-all-old-new-renamed-files.outputs.all_old_new_renamed_files }}
+        run: |
+          echo "Invalid output: Expected to include (test/test rename 1.txt,test/test rename-1.txt) got ($ALL_OLD_NEW_RENAMED_FILES)"
+          exit 1
+        shell:
+          bash
+
+      - name: Check all_old_new_renamed_files output on windows platform
+        if: "!contains(steps.changed-files-all-old-new-renamed-files.outputs.all_old_new_renamed_files, 'test\\test rename 1.txt,test\\test rename-1.txt') && runner.os == 'Windows'"
+        env:
+          ALL_OLD_NEW_RENAMED_FILES: ${{ steps.changed-files-all-old-new-renamed-files.outputs.all_old_new_renamed_files }}
+        run: |
+          echo "Invalid output: Expected to not include (test\test rename 1.txt,test\test rename-1.txt) got ($ALL_OLD_NEW_RENAMED_FILES)"
+          exit 1
+        shell:
+          bash
+
+      - name: Check the renamed_files output on non windows platform
+        if: "!contains(steps.changed-files-all-old-new-renamed-files.outputs.renamed_files, 'test/test rename-1.txt') && runner.os != 'Windows'"
+        env:
+          RENAMED_FILES: ${{ steps.changed-files-all-old-new-renamed-files.outputs.renamed_files }}
+        run: |
+          echo "Invalid output: Expected to include (test/test rename-1.txt) got ($RENAMED_FILES)"
+          exit 1
+        shell:
+          bash
+
+      - name: Check the renamed_files output on windows platform
+        if: "!contains(steps.changed-files-all-old-new-renamed-files.outputs.renamed_files, 'test\\test rename-1.txt') && runner.os == 'Windows'"
+        env:
+          RENAMED_FILES: ${{ steps.changed-files-all-old-new-renamed-files.outputs.renamed_files }}
+        run: |
+          echo "Invalid output: Expected to not include (test\test rename-1.txt) got ($RENAMED_FILES)"
+          exit 1
+        shell:
+          bash

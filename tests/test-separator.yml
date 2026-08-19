@@ -1,0 +1,102 @@
+name: Test custom separator output
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REF_NAME: act-harness
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Get base and head SHAs from existing history
+        id: shas
+        run: |
+          HEAD_SHA=$(git rev-parse HEAD)
+          if git rev-parse HEAD~1 >/dev/null 2>&1; then
+            BASE_SHA=$(git rev-parse HEAD~1)
+          else
+            BASE_SHA=$HEAD_SHA
+          fi
+          echo "head_sha=$HEAD_SHA" >> $GITHUB_OUTPUT
+          echo "base_sha=$BASE_SHA" >> $GITHUB_OUTPUT
+          echo "Head SHA: $HEAD_SHA"
+          echo "Base SHA: $BASE_SHA"
+
+      - name: Run action with comma separator
+        id: changed-comma
+        uses: .
+        with:
+          base_sha: ${{ steps.shas.outputs.base_sha }}
+          sha: ${{ steps.shas.outputs.head_sha }}
+          separator: ","
+          skip_initial_fetch: "true"
+          skip_same_sha: "true"
+
+      - name: Assert comma separator output is valid
+        env:
+          ALL_CHANGED: ${{ steps.changed-comma.outputs.all_changed_and_modified_files }}
+          COUNT: ${{ steps.changed-comma.outputs.all_changed_and_modified_files_count }}
+        run: |
+          echo "all_changed_and_modified_files (comma sep): $ALL_CHANGED"
+          echo "count: $COUNT"
+          if ! echo "$COUNT" | grep -qE '^[0-9]+$'; then
+            echo "FAIL: count is not numeric: $COUNT"
+            exit 1
+          fi
+          # If more than one file changed, output should contain comma separator
+          if [ "$COUNT" -gt 1 ]; then
+            if ! echo "$ALL_CHANGED" | grep -q ","; then
+              echo "FAIL: expected comma separator in output with multiple files, got: $ALL_CHANGED"
+              exit 1
+            fi
+            echo "PASS: comma separator found in output: $ALL_CHANGED"
+          else
+            echo "PASS: count=$COUNT, separator check not needed: $ALL_CHANGED"
+          fi
+
+      - name: Run action with pipe separator
+        id: changed-pipe
+        uses: .
+        with:
+          base_sha: ${{ steps.shas.outputs.base_sha }}
+          sha: ${{ steps.shas.outputs.head_sha }}
+          separator: "|"
+          skip_initial_fetch: "true"
+          skip_same_sha: "true"
+
+      - name: Assert pipe separator output is valid
+        env:
+          ALL_CHANGED: ${{ steps.changed-pipe.outputs.all_changed_and_modified_files }}
+          COUNT: ${{ steps.changed-pipe.outputs.all_changed_and_modified_files_count }}
+        run: |
+          echo "all_changed_and_modified_files (pipe sep): $ALL_CHANGED"
+          echo "count: $COUNT"
+          if ! echo "$COUNT" | grep -qE '^[0-9]+$'; then
+            echo "FAIL: count is not numeric: $COUNT"
+            exit 1
+          fi
+          if [ "$COUNT" -gt 1 ]; then
+            if ! echo "$ALL_CHANGED" | grep -q "|"; then
+              echo "FAIL: expected pipe separator in output with multiple files, got: $ALL_CHANGED"
+              exit 1
+            fi
+            echo "PASS: pipe separator found in output: $ALL_CHANGED"
+          else
+            echo "PASS: count=$COUNT, separator check not needed: $ALL_CHANGED"
+          fi
+
+      - name: Assert comma and pipe outputs have same count
+        env:
+          COUNT_COMMA: ${{ steps.changed-comma.outputs.all_changed_and_modified_files_count }}
+          COUNT_PIPE: ${{ steps.changed-pipe.outputs.all_changed_and_modified_files_count }}
+        run: |
+          echo "count (comma): $COUNT_COMMA"
+          echo "count (pipe): $COUNT_PIPE"
+          if [ "$COUNT_COMMA" != "$COUNT_PIPE" ]; then
+            echo "FAIL: counts should be equal regardless of separator: comma=$COUNT_COMMA, pipe=$COUNT_PIPE"
+            exit 1
+          fi
+          echo "PASS: counts are equal: $COUNT_COMMA"

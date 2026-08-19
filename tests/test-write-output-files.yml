@@ -1,0 +1,80 @@
+name: Test write_output_files feature
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REF_NAME: act-harness
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Get base and head SHAs from existing history
+        id: shas
+        run: |
+          HEAD_SHA=$(git rev-parse HEAD)
+          if git rev-parse HEAD~1 >/dev/null 2>&1; then
+            BASE_SHA=$(git rev-parse HEAD~1)
+          else
+            BASE_SHA=$HEAD_SHA
+          fi
+          echo "head_sha=$HEAD_SHA" >> $GITHUB_OUTPUT
+          echo "base_sha=$BASE_SHA" >> $GITHUB_OUTPUT
+          echo "Head SHA: $HEAD_SHA"
+          echo "Base SHA: $BASE_SHA"
+
+      - id: changed
+        uses: .
+        with:
+          base_sha: ${{ steps.shas.outputs.base_sha }}
+          sha: ${{ steps.shas.outputs.head_sha }}
+          write_output_files: "true"
+          output_dir: ".github/outputs"
+          skip_initial_fetch: "true"
+          skip_same_sha: "true"
+
+      - name: Assert output directory was created
+        run: |
+          echo "Checking for output directory .github/outputs/"
+          ls -la .github/outputs/ || true
+          if [ ! -d ".github/outputs" ]; then
+            echo "FAIL: output directory .github/outputs does not exist"
+            exit 1
+          fi
+          echo "PASS: output directory exists"
+
+      - name: Assert output files were created
+        run: |
+          echo "Checking for output files in .github/outputs/"
+          ls -la .github/outputs/ || true
+          # Check that at least one output file was created
+          FILE_COUNT=$(ls .github/outputs/*.txt 2>/dev/null | wc -l)
+          echo "Number of output .txt files: $FILE_COUNT"
+          if [ "$FILE_COUNT" -lt 1 ]; then
+            echo "FAIL: expected at least one .txt output file in .github/outputs/"
+            exit 1
+          fi
+          echo "PASS: output files created in .github/outputs/"
+
+      - name: Assert all_changed_and_modified_files output file exists
+        run: |
+          OUTPUT_FILE=".github/outputs/all_changed_and_modified_files.txt"
+          if [ ! -f "$OUTPUT_FILE" ]; then
+            echo "FAIL: expected output file $OUTPUT_FILE not found"
+            ls .github/outputs/ || true
+            exit 1
+          fi
+          CONTENT=$(cat "$OUTPUT_FILE")
+          echo "Content of $OUTPUT_FILE: $CONTENT"
+          echo "PASS: output file exists"
+
+      - name: Assert action outputs are consistent with file contents
+        env:
+          ALL_CHANGED: ${{ steps.changed.outputs.all_changed_and_modified_files }}
+        run: |
+          echo "all_changed_and_modified_files output: $ALL_CHANGED"
+          FILE_CONTENT=$(cat .github/outputs/all_changed_and_modified_files.txt 2>/dev/null || echo "")
+          echo "File content: $FILE_CONTENT"
+          echo "PASS: output file content verified"

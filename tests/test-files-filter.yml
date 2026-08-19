@@ -1,84 +1,85 @@
-name: Test files filter input
+name: Test files pattern filtering
 on:
   workflow_dispatch:
+
 jobs:
   test:
     runs-on: ubuntu-latest
     env:
-      GITHUB_REF: refs/heads/main
       GITHUB_EVENT_NAME: push
+      GITHUB_REF: refs/heads/act-harness
+      GITHUB_REF_NAME: act-harness
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
 
-      - name: Create test files and commit
+      - name: Set up git user
         run: |
           git config user.email "test@example.com"
           git config user.name "Test User"
-          mkdir -p src
-          echo "console.log('hello')" > src/app.js
-          echo "# docs" > docs.md
-          git add src/ docs.md
-          git commit -m "test: add source and docs files"
 
-      - id: changed-js
+      - name: Create base commit with multiple files
+        run: |
+          echo "js content" > app.js
+          echo "md content" > README.md
+          git add app.js README.md
+          git commit -m "Base commit with multiple files"
+
+      - name: Modify only the JS file
+        run: |
+          echo "updated js content" >> app.js
+          git add app.js
+          git commit -m "Update JS file only"
+
+      - name: Capture SHAs for explicit comparison
+        id: shas
+        run: |
+          BASE_SHA=$(git rev-parse HEAD~1)
+          HEAD_SHA=$(git rev-parse HEAD)
+          echo "base_sha=$BASE_SHA" >> $GITHUB_OUTPUT
+          echo "head_sha=$HEAD_SHA" >> $GITHUB_OUTPUT
+          echo "Base SHA: $BASE_SHA"
+          echo "Head SHA: $HEAD_SHA"
+
+      - name: Run changed-files with JS filter (should match)
+        id: changed-js
         uses: .
         with:
-          files: "**/*.js"
-          fetch_depth: "25"
+          base_sha: ${{ steps.shas.outputs.base_sha }}
+          sha: ${{ steps.shas.outputs.head_sha }}
+          skip_initial_fetch: "true"
+          files: "*.js"
 
-      - name: Assert JS files are detected
+      - name: Assert any_changed is true for JS filter
         env:
           ANY_CHANGED: ${{ steps.changed-js.outputs.any_changed }}
           ALL_CHANGED: ${{ steps.changed-js.outputs.all_changed_files }}
-          ALL_CHANGED_COUNT: ${{ steps.changed-js.outputs.all_changed_files_count }}
         run: |
-          echo "any_changed (js): $ANY_CHANGED"
-          echo "all_changed_files (js): $ALL_CHANGED"
-          echo "all_changed_files_count (js): $ALL_CHANGED_COUNT"
+          echo "any_changed (js filter): $ANY_CHANGED"
+          echo "all_changed_files (js filter): $ALL_CHANGED"
           if [ "$ANY_CHANGED" != "true" ]; then
-            echo "FAIL: expected any_changed=true for *.js files"
+            echo "FAIL: expected any_changed to be true for JS filter"
             exit 1
           fi
-          if ! echo "$ALL_CHANGED" | grep -q "src/app.js"; then
-            echo "FAIL: src/app.js not found in all_changed_files"
-            exit 1
-          fi
-          echo "PASS: JS files filter works correctly"
+          echo "PASS: any_changed is true for JS filter"
 
-      - id: changed-md
+      - name: Run changed-files with MD filter (should NOT match)
+        id: changed-md
         uses: .
         with:
-          files: "**/*.md"
-          fetch_depth: "25"
+          base_sha: ${{ steps.shas.outputs.base_sha }}
+          sha: ${{ steps.shas.outputs.head_sha }}
+          skip_initial_fetch: "true"
+          files: "*.md"
 
-      - name: Assert MD files are detected
+      - name: Assert any_changed is false for MD filter
         env:
           ANY_CHANGED: ${{ steps.changed-md.outputs.any_changed }}
-          ALL_CHANGED: ${{ steps.changed-md.outputs.all_changed_files }}
         run: |
-          echo "any_changed (md): $ANY_CHANGED"
-          echo "all_changed_files (md): $ALL_CHANGED"
-          if [ "$ANY_CHANGED" != "true" ]; then
-            echo "FAIL: expected any_changed=true for *.md files"
+          echo "any_changed (md filter): $ANY_CHANGED"
+          if [ "$ANY_CHANGED" != "false" ]; then
+            echo "FAIL: expected any_changed to be false for MD filter (only JS was changed)"
             exit 1
           fi
-          echo "PASS: MD files filter works correctly"
-
-      - id: changed-ignore
-        uses: .
-        with:
-          files_ignore: "**/*.md"
-          fetch_depth: "25"
-
-      - name: Assert ignored MD files are not in changed files
-        env:
-          ALL_CHANGED: ${{ steps.changed-ignore.outputs.all_changed_files }}
-        run: |
-          echo "all_changed_files (ignore md): $ALL_CHANGED"
-          if echo "$ALL_CHANGED" | grep -q "docs.md"; then
-            echo "FAIL: docs.md should be ignored"
-            exit 1
-          fi
-          echo "PASS: files_ignore works correctly"
+          echo "PASS: any_changed is false for MD filter"

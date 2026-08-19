@@ -1,66 +1,82 @@
-name: Test JSON output and separator options
+name: Test JSON output format
 on:
   workflow_dispatch:
 jobs:
   test:
     runs-on: ubuntu-latest
     env:
-      GITHUB_REF: refs/heads/main
-      GITHUB_EVENT_NAME: push
+      GITHUB_REF_NAME: act-harness
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
 
-      - name: Create test files and commit
+      - name: Get base and head SHAs from existing history
+        id: shas
         run: |
-          git config user.email "test@example.com"
-          git config user.name "Test User"
-          echo "file1" > file1.txt
-          echo "file2" > file2.txt
-          git add file1.txt file2.txt
-          git commit -m "test: add two files for JSON output test"
+          HEAD_SHA=$(git rev-parse HEAD)
+          if git rev-parse HEAD~1 >/dev/null 2>&1; then
+            BASE_SHA=$(git rev-parse HEAD~1)
+          else
+            BASE_SHA=$HEAD_SHA
+          fi
+          echo "head_sha=$HEAD_SHA" >> $GITHUB_OUTPUT
+          echo "base_sha=$BASE_SHA" >> $GITHUB_OUTPUT
+          echo "Head SHA: $HEAD_SHA"
+          echo "Base SHA: $BASE_SHA"
 
-      - id: changed-json
+      - id: changed
         uses: .
         with:
+          base_sha: ${{ steps.shas.outputs.base_sha }}
+          sha: ${{ steps.shas.outputs.head_sha }}
           json: "true"
-          escape_json: "true"
-          fetch_depth: "25"
+          escape_json: "false"
+          skip_initial_fetch: "true"
+          skip_same_sha: "true"
 
-      - name: Assert JSON output is valid JSON array
+      - name: Assert all_changed_and_modified_files is valid JSON array
         env:
-          ALL_CHANGED: ${{ steps.changed-json.outputs.all_changed_files }}
-          ANY_CHANGED: ${{ steps.changed-json.outputs.any_changed }}
+          ALL_CHANGED: ${{ steps.changed.outputs.all_changed_and_modified_files }}
+        run: |
+          echo "all_changed_and_modified_files (json): $ALL_CHANGED"
+          if [ -z "$ALL_CHANGED" ]; then
+            echo "FAIL: expected JSON output but got empty string"
+            exit 1
+          fi
+          # Validate it's a JSON array
+          if ! echo "$ALL_CHANGED" | python3 -c "import sys, json; data=json.load(sys.stdin); assert isinstance(data, list)" 2>/dev/null; then
+            echo "FAIL: output is not a valid JSON array: $ALL_CHANGED"
+            exit 1
+          fi
+          echo "PASS: output is a valid JSON array: $ALL_CHANGED"
+
+      - name: Assert all_changed_files is valid JSON array
+        env:
+          ALL_CHANGED: ${{ steps.changed.outputs.all_changed_files }}
         run: |
           echo "all_changed_files (json): $ALL_CHANGED"
-          echo "any_changed: $ANY_CHANGED"
-          if [ -z "$ANY_CHANGED" ]; then
-            echo "FAIL: any_changed output is empty"
+          if [ -z "$ALL_CHANGED" ]; then
+            echo "FAIL: expected JSON output but got empty string"
             exit 1
           fi
-          # Verify the output looks like a JSON array
-          if ! echo "$ALL_CHANGED" | grep -qE '^\[.*\]$'; then
-            echo "FAIL: all_changed_files is not a JSON array: $ALL_CHANGED"
+          if ! echo "$ALL_CHANGED" | python3 -c "import sys, json; data=json.load(sys.stdin); assert isinstance(data, list)" 2>/dev/null; then
+            echo "FAIL: output is not a valid JSON array: $ALL_CHANGED"
             exit 1
           fi
-          echo "PASS: JSON output is a valid JSON array"
+          echo "PASS: all_changed_files is a valid JSON array"
 
-      - id: changed-separator
-        uses: .
-        with:
-          separator: ","
-          fetch_depth: "25"
-
-      - name: Assert separator is applied
+      - name: Assert added_files is valid JSON array
         env:
-          ALL_CHANGED: ${{ steps.changed-separator.outputs.all_changed_files }}
-          ALL_CHANGED_COUNT: ${{ steps.changed-separator.outputs.all_changed_files_count }}
+          ADDED: ${{ steps.changed.outputs.added_files }}
         run: |
-          echo "all_changed_files (comma sep): $ALL_CHANGED"
-          echo "all_changed_files_count: $ALL_CHANGED_COUNT"
-          if ! echo "$ALL_CHANGED_COUNT" | grep -qE '^[0-9]+$'; then
-            echo "FAIL: all_changed_files_count is not numeric: $ALL_CHANGED_COUNT"
+          echo "added_files (json): $ADDED"
+          if [ -z "$ADDED" ]; then
+            echo "FAIL: expected JSON output but got empty string"
             exit 1
           fi
-          echo "PASS: separator input works correctly"
+          if ! echo "$ADDED" | python3 -c "import sys, json; data=json.load(sys.stdin); assert isinstance(data, list)" 2>/dev/null; then
+            echo "FAIL: added_files is not a valid JSON array: $ADDED"
+            exit 1
+          fi
+          echo "PASS: added_files is a valid JSON array"

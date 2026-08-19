@@ -1,0 +1,111 @@
+name: Test boolean output values
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REF_NAME: act-harness
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Get base and head SHAs from existing history
+        id: shas
+        run: |
+          HEAD_SHA=$(git rev-parse HEAD)
+          if git rev-parse HEAD~1 >/dev/null 2>&1; then
+            BASE_SHA=$(git rev-parse HEAD~1)
+          else
+            BASE_SHA=$HEAD_SHA
+          fi
+          echo "head_sha=$HEAD_SHA" >> $GITHUB_OUTPUT
+          echo "base_sha=$BASE_SHA" >> $GITHUB_OUTPUT
+          echo "Head SHA: $HEAD_SHA"
+          echo "Base SHA: $BASE_SHA"
+
+      - id: changed
+        uses: .
+        with:
+          base_sha: ${{ steps.shas.outputs.base_sha }}
+          sha: ${{ steps.shas.outputs.head_sha }}
+          skip_initial_fetch: "true"
+          skip_same_sha: "true"
+
+      - name: Assert any_changed is a boolean string
+        env:
+          ANY_CHANGED: ${{ steps.changed.outputs.any_changed }}
+        run: |
+          echo "any_changed: $ANY_CHANGED"
+          if [ "$ANY_CHANGED" != "true" ] && [ "$ANY_CHANGED" != "false" ]; then
+            echo "FAIL: any_changed must be 'true' or 'false', got: $ANY_CHANGED"
+            exit 1
+          fi
+          echo "PASS: any_changed=$ANY_CHANGED"
+
+      - name: Assert any_modified is a boolean string
+        env:
+          ANY_MODIFIED: ${{ steps.changed.outputs.any_modified }}
+        run: |
+          echo "any_modified: $ANY_MODIFIED"
+          if [ "$ANY_MODIFIED" != "true" ] && [ "$ANY_MODIFIED" != "false" ]; then
+            echo "FAIL: any_modified must be 'true' or 'false', got: $ANY_MODIFIED"
+            exit 1
+          fi
+          echo "PASS: any_modified=$ANY_MODIFIED"
+
+      - name: Assert any_deleted is a boolean string
+        env:
+          ANY_DELETED: ${{ steps.changed.outputs.any_deleted }}
+        run: |
+          echo "any_deleted: $ANY_DELETED"
+          if [ "$ANY_DELETED" != "true" ] && [ "$ANY_DELETED" != "false" ]; then
+            echo "FAIL: any_deleted must be 'true' or 'false', got: $ANY_DELETED"
+            exit 1
+          fi
+          echo "PASS: any_deleted=$ANY_DELETED"
+
+      - name: Assert only_changed is a boolean string
+        env:
+          ONLY_CHANGED: ${{ steps.changed.outputs.only_changed }}
+        run: |
+          echo "only_changed: $ONLY_CHANGED"
+          if [ "$ONLY_CHANGED" != "true" ] && [ "$ONLY_CHANGED" != "false" ]; then
+            echo "FAIL: only_changed must be 'true' or 'false', got: $ONLY_CHANGED"
+            exit 1
+          fi
+          echo "PASS: only_changed=$ONLY_CHANGED"
+
+      - name: Assert only_modified is a boolean string
+        env:
+          ONLY_MODIFIED: ${{ steps.changed.outputs.only_modified }}
+        run: |
+          echo "only_modified: $ONLY_MODIFIED"
+          if [ "$ONLY_MODIFIED" != "true" ] && [ "$ONLY_MODIFIED" != "false" ]; then
+            echo "FAIL: only_modified must be 'true' or 'false', got: $ONLY_MODIFIED"
+            exit 1
+          fi
+          echo "PASS: only_modified=$ONLY_MODIFIED"
+
+      - name: Assert only_deleted is a boolean string
+        env:
+          ONLY_DELETED: ${{ steps.changed.outputs.only_deleted }}
+        run: |
+          echo "only_deleted: $ONLY_DELETED"
+          if [ "$ONLY_DELETED" != "true" ] && [ "$ONLY_DELETED" != "false" ]; then
+            echo "FAIL: only_deleted must be 'true' or 'false', got: $ONLY_DELETED"
+            exit 1
+          fi
+          echo "PASS: only_deleted=$ONLY_DELETED"
+
+      - name: Assert added_files_count is numeric
+        env:
+          ADDED_COUNT: ${{ steps.changed.outputs.added_files_count }}
+        run: |
+          echo "added_files_count: $ADDED_COUNT"
+          if ! echo "$ADDED_COUNT" | grep -qE '^[0-9]+$'; then
+            echo "FAIL: added_files_count is not numeric: $ADDED_COUNT"
+            exit 1
+          fi
+          echo "PASS: added_files_count=$ADDED_COUNT"
