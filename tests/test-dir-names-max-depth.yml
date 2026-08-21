@@ -1,0 +1,52 @@
+name: Test dir_names_max_depth input
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Create nested directory structure with changes
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+          # Create a nested file so we have something to detect
+          mkdir -p deep/level1/level2/level3
+          echo "test content" > deep/level1/level2/level3/file.txt
+          git add deep/
+          git commit -m "Add nested test files"
+
+      - id: changed
+        uses: .
+        with:
+          dir_names: "true"
+          dir_names_max_depth: "2"
+          since_last_remote_commit: "false"
+          base_sha: HEAD~1
+          sha: HEAD
+
+      - name: Assert dir_names_max_depth limits output depth
+        env:
+          ALL_MODIFIED: ${{ steps.changed.outputs.all_modified_files }}
+          ANY_MODIFIED: ${{ steps.changed.outputs.any_modified }}
+        run: |
+          echo "all_modified_files: $ALL_MODIFIED"
+          echo "any_modified: $ANY_MODIFIED"
+          # We added files, so any_modified should be true
+          if [ "$ANY_MODIFIED" != "true" ]; then
+            echo "FAIL: expected any_modified to be true"
+            exit 1
+          fi
+          # With max_depth=2, we should see at most 'deep/level1' not 'deep/level1/level2'
+          for dir in $ALL_MODIFIED; do
+            depth=$(echo "$dir" | tr -cd '/' | wc -c)
+            echo "  dir: $dir (depth separators: $depth)"
+            if [ "$depth" -gt 1 ]; then
+              echo "FAIL: directory '$dir' exceeds max depth of 2 (more than 1 separator)"
+              exit 1
+            fi
+          done
+          echo "PASS: all directories are within max depth of 2"

@@ -1,0 +1,81 @@
+name: Test basic changed files detection
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up git and create commits to compare
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+          # Record the current HEAD as base
+          BASE_SHA=$(git rev-parse HEAD)
+          echo "BASE_SHA=$BASE_SHA" >> $GITHUB_ENV
+
+          # Create a new file and commit it
+          echo "hello world" > tests/test-added-file.txt
+          git add tests/test-added-file.txt
+          git commit -m "Add test file for changed-files test"
+
+          # Record the new HEAD as the comparison SHA
+          HEAD_SHA=$(git rev-parse HEAD)
+          echo "HEAD_SHA=$HEAD_SHA" >> $GITHUB_ENV
+
+      - id: changed
+        uses: .
+        with:
+          base_sha: ${{ env.BASE_SHA }}
+          sha: ${{ env.HEAD_SHA }}
+
+      - name: Assert all_changed_files is non-empty
+        env:
+          ALL_CHANGED: ${{ steps.changed.outputs.all_changed_files }}
+          ALL_CHANGED_COUNT: ${{ steps.changed.outputs.all_changed_files_count }}
+          ADDED: ${{ steps.changed.outputs.added_files }}
+          ADDED_COUNT: ${{ steps.changed.outputs.added_files_count }}
+        run: |
+          echo "all_changed_files: $ALL_CHANGED"
+          echo "all_changed_files_count: $ALL_CHANGED_COUNT"
+          echo "added_files: $ADDED"
+          echo "added_files_count: $ADDED_COUNT"
+
+          if [ -z "$ALL_CHANGED" ]; then
+            echo "FAIL: expected all_changed_files to be non-empty"
+            exit 1
+          fi
+          echo "PASS: all_changed_files is non-empty"
+
+          if [ "$ALL_CHANGED_COUNT" -lt 1 ]; then
+            echo "FAIL: expected all_changed_files_count >= 1, got $ALL_CHANGED_COUNT"
+            exit 1
+          fi
+          echo "PASS: all_changed_files_count=$ALL_CHANGED_COUNT"
+
+          if [ -z "$ADDED" ]; then
+            echo "FAIL: expected added_files to be non-empty"
+            exit 1
+          fi
+          echo "PASS: added_files=$ADDED"
+
+      - name: Assert any_changed is true
+        env:
+          ANY_CHANGED: ${{ steps.changed.outputs.any_changed }}
+        run: |
+          echo "any_changed: $ANY_CHANGED"
+          if [ "$ANY_CHANGED" != "true" ]; then
+            echo "FAIL: expected any_changed=true, got $ANY_CHANGED"
+            exit 1
+          fi
+          echo "PASS"
+
+      - name: Clean up test file
+        if: always()
+        run: |
+          git rm -f tests/test-added-file.txt 2>/dev/null || true
+          git commit -m "Cleanup test file" 2>/dev/null || true

@@ -1,0 +1,81 @@
+name: Test files_ignore pattern filtering
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up git and create commits with mixed file types
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+          BASE_SHA=$(git rev-parse HEAD)
+          echo "BASE_SHA=$BASE_SHA" >> $GITHUB_ENV
+
+          mkdir -p tests/tmp-ignore-test
+          echo "source code" > tests/tmp-ignore-test/main.go
+          echo "test code" > tests/tmp-ignore-test/main_test.go
+          echo "docs" > tests/tmp-ignore-test/README.md
+
+          git add tests/tmp-ignore-test/
+          git commit -m "Add files for ignore pattern test"
+
+          HEAD_SHA=$(git rev-parse HEAD)
+          echo "HEAD_SHA=$HEAD_SHA" >> $GITHUB_ENV
+
+      - name: Run without ignore (baseline)
+        id: changed_all
+        uses: .
+        with:
+          base_sha: ${{ env.BASE_SHA }}
+          sha: ${{ env.HEAD_SHA }}
+
+      - name: Run with test files ignored
+        id: changed_no_tests
+        uses: .
+        with:
+          base_sha: ${{ env.BASE_SHA }}
+          sha: ${{ env.HEAD_SHA }}
+          files_ignore: "**/*_test.go"
+
+      - name: Assert ignore pattern works
+        env:
+          ALL_COUNT: ${{ steps.changed_all.outputs.all_changed_files_count }}
+          FILTERED_COUNT: ${{ steps.changed_no_tests.outputs.all_changed_files_count }}
+          FILTERED_FILES: ${{ steps.changed_no_tests.outputs.all_changed_files }}
+        run: |
+          echo "all_changed_files_count (no filter): $ALL_COUNT"
+          echo "all_changed_files_count (with ignore): $FILTERED_COUNT"
+          echo "all_changed_files (with ignore): $FILTERED_FILES"
+
+          # Baseline should have 3 files
+          if [ "$ALL_COUNT" -lt 3 ]; then
+            echo "FAIL: expected at least 3 files in baseline, got $ALL_COUNT"
+            exit 1
+          fi
+          echo "PASS: baseline has $ALL_COUNT files"
+
+          # Filtered should have fewer files (test file excluded)
+          if [ "$FILTERED_COUNT" -ge "$ALL_COUNT" ]; then
+            echo "FAIL: expected filtered count ($FILTERED_COUNT) < all count ($ALL_COUNT)"
+            exit 1
+          fi
+          echo "PASS: filtered count ($FILTERED_COUNT) < all count ($ALL_COUNT)"
+
+          # The test file should NOT appear in filtered output
+          if echo "$FILTERED_FILES" | grep -q "_test.go"; then
+            echo "FAIL: test file should be ignored but found in output: $FILTERED_FILES"
+            exit 1
+          fi
+          echo "PASS: test file correctly excluded from output"
+
+      - name: Clean up test files
+        if: always()
+        run: |
+          git rm -rf tests/tmp-ignore-test/ 2>/dev/null || true
+          git commit -m "Cleanup ignore test files" 2>/dev/null || true

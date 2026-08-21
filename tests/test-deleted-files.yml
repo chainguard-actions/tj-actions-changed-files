@@ -1,0 +1,82 @@
+name: Test deleted files detection
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up git - create then delete a file
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+          # First commit: add a file
+          mkdir -p tests/tmp-delete-test
+          echo "to be deleted" > tests/tmp-delete-test/delete-me.txt
+          echo "to be kept" > tests/tmp-delete-test/keep-me.txt
+          git add tests/tmp-delete-test/
+          git commit -m "Add files before deletion test"
+
+          # Record base SHA (after adding files)
+          BASE_SHA=$(git rev-parse HEAD)
+          echo "BASE_SHA=$BASE_SHA" >> $GITHUB_ENV
+
+          # Second commit: delete one file
+          git rm tests/tmp-delete-test/delete-me.txt
+          git commit -m "Delete file for deletion test"
+
+          HEAD_SHA=$(git rev-parse HEAD)
+          echo "HEAD_SHA=$HEAD_SHA" >> $GITHUB_ENV
+
+      - id: changed
+        uses: .
+        with:
+          base_sha: ${{ env.BASE_SHA }}
+          sha: ${{ env.HEAD_SHA }}
+
+      - name: Assert deleted_files output
+        env:
+          DELETED: ${{ steps.changed.outputs.deleted_files }}
+          DELETED_COUNT: ${{ steps.changed.outputs.deleted_files_count }}
+          ANY_DELETED: ${{ steps.changed.outputs.any_deleted }}
+          ALL_MODIFIED: ${{ steps.changed.outputs.all_modified_files }}
+        run: |
+          echo "deleted_files: $DELETED"
+          echo "deleted_files_count: $DELETED_COUNT"
+          echo "any_deleted: $ANY_DELETED"
+          echo "all_modified_files: $ALL_MODIFIED"
+
+          if [ -z "$DELETED" ]; then
+            echo "FAIL: expected deleted_files to be non-empty"
+            exit 1
+          fi
+          echo "PASS: deleted_files=$DELETED"
+
+          if [ "$DELETED_COUNT" -lt 1 ]; then
+            echo "FAIL: expected deleted_files_count >= 1, got $DELETED_COUNT"
+            exit 1
+          fi
+          echo "PASS: deleted_files_count=$DELETED_COUNT"
+
+          if [ "$ANY_DELETED" != "true" ]; then
+            echo "FAIL: expected any_deleted=true"
+            exit 1
+          fi
+          echo "PASS: any_deleted=true"
+
+          # The deleted file should appear in all_modified_files (ACMRD)
+          if [ -z "$ALL_MODIFIED" ]; then
+            echo "FAIL: expected all_modified_files to be non-empty"
+            exit 1
+          fi
+          echo "PASS: all_modified_files=$ALL_MODIFIED"
+
+      - name: Clean up test files
+        if: always()
+        run: |
+          git rm -rf tests/tmp-delete-test/ 2>/dev/null || true
+          git commit -m "Cleanup deletion test files" 2>/dev/null || true

@@ -1,0 +1,72 @@
+name: Test JSON output format
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up git and create commits
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+          BASE_SHA=$(git rev-parse HEAD)
+          echo "BASE_SHA=$BASE_SHA" >> $GITHUB_ENV
+
+          mkdir -p tests/tmp-json-test
+          echo "file one" > tests/tmp-json-test/file1.txt
+          echo "file two" > tests/tmp-json-test/file2.txt
+          git add tests/tmp-json-test/
+          git commit -m "Add files for JSON output test"
+
+          HEAD_SHA=$(git rev-parse HEAD)
+          echo "HEAD_SHA=$HEAD_SHA" >> $GITHUB_ENV
+
+      - id: changed_json
+        uses: .
+        with:
+          base_sha: ${{ env.BASE_SHA }}
+          sha: ${{ env.HEAD_SHA }}
+          json: "true"
+          escape_json: "false"
+
+      - name: Assert JSON output is valid array
+        env:
+          ALL_CHANGED: ${{ steps.changed_json.outputs.all_changed_files }}
+          ADDED: ${{ steps.changed_json.outputs.added_files }}
+        run: |
+          echo "all_changed_files (JSON): $ALL_CHANGED"
+          echo "added_files (JSON): $ADDED"
+
+          # Validate it's a JSON array
+          if ! echo "$ALL_CHANGED" | python3 -c "import sys, json; data=json.load(sys.stdin); assert isinstance(data, list), 'not a list'"; then
+            echo "FAIL: all_changed_files is not a valid JSON array"
+            exit 1
+          fi
+          echo "PASS: all_changed_files is a valid JSON array"
+
+          # Validate added_files is also a JSON array
+          if ! echo "$ADDED" | python3 -c "import sys, json; data=json.load(sys.stdin); assert isinstance(data, list), 'not a list'"; then
+            echo "FAIL: added_files is not a valid JSON array"
+            exit 1
+          fi
+          echo "PASS: added_files is a valid JSON array"
+
+          # Validate the array has at least 2 elements (we added 2 files)
+          COUNT=$(echo "$ALL_CHANGED" | python3 -c "import sys, json; print(len(json.load(sys.stdin)))")
+          echo "JSON array count: $COUNT"
+          if [ "$COUNT" -lt 2 ]; then
+            echo "FAIL: expected at least 2 files in JSON array, got $COUNT"
+            exit 1
+          fi
+          echo "PASS: JSON array has $COUNT elements"
+
+      - name: Clean up test files
+        if: always()
+        run: |
+          git rm -rf tests/tmp-json-test/ 2>/dev/null || true
+          git commit -m "Cleanup JSON test files" 2>/dev/null || true

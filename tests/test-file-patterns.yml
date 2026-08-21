@@ -1,0 +1,118 @@
+name: Test file pattern filtering
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up git and create commits with multiple file types
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+          # Record the current HEAD as base
+          BASE_SHA=$(git rev-parse HEAD)
+          echo "BASE_SHA=$BASE_SHA" >> $GITHUB_ENV
+
+          # Create files of different types
+          mkdir -p tests/tmp-pattern-test
+          echo "typescript content" > tests/tmp-pattern-test/app.ts
+          echo "markdown content" > tests/tmp-pattern-test/README.md
+          echo "python content" > tests/tmp-pattern-test/script.py
+
+          git add tests/tmp-pattern-test/
+          git commit -m "Add multiple file types for pattern test"
+
+          HEAD_SHA=$(git rev-parse HEAD)
+          echo "HEAD_SHA=$HEAD_SHA" >> $GITHUB_ENV
+
+      - name: Run changed-files with TS pattern only
+        id: ts_changed
+        uses: .
+        with:
+          base_sha: ${{ env.BASE_SHA }}
+          sha: ${{ env.HEAD_SHA }}
+          files: "**/*.ts"
+
+      - name: Assert only TS files matched
+        env:
+          ANY_CHANGED: ${{ steps.ts_changed.outputs.any_changed }}
+          ALL_CHANGED: ${{ steps.ts_changed.outputs.all_changed_files }}
+        run: |
+          echo "any_changed: $ANY_CHANGED"
+          echo "all_changed_files: $ALL_CHANGED"
+
+          if [ "$ANY_CHANGED" != "true" ]; then
+            echo "FAIL: expected any_changed=true for TS files"
+            exit 1
+          fi
+          echo "PASS: any_changed=true for TS pattern"
+
+          # The matched files should contain .ts
+          if echo "$ALL_CHANGED" | grep -q "\.ts"; then
+            echo "PASS: .ts file found in changed files"
+          else
+            echo "FAIL: expected .ts file in changed files, got: $ALL_CHANGED"
+            exit 1
+          fi
+
+      - name: Run changed-files with MD pattern only
+        id: md_changed
+        uses: .
+        with:
+          base_sha: ${{ env.BASE_SHA }}
+          sha: ${{ env.HEAD_SHA }}
+          files: "**/*.md"
+
+      - name: Assert only MD files matched
+        env:
+          ANY_CHANGED: ${{ steps.md_changed.outputs.any_changed }}
+          ALL_CHANGED: ${{ steps.md_changed.outputs.all_changed_files }}
+        run: |
+          echo "any_changed: $ANY_CHANGED"
+          echo "all_changed_files: $ALL_CHANGED"
+
+          if [ "$ANY_CHANGED" != "true" ]; then
+            echo "FAIL: expected any_changed=true for MD files"
+            exit 1
+          fi
+          echo "PASS: any_changed=true for MD pattern"
+
+          if echo "$ALL_CHANGED" | grep -q "\.md"; then
+            echo "PASS: .md file found in changed files"
+          else
+            echo "FAIL: expected .md file in changed files, got: $ALL_CHANGED"
+            exit 1
+          fi
+
+      - name: Run changed-files with non-matching pattern
+        id: go_changed
+        uses: .
+        with:
+          base_sha: ${{ env.BASE_SHA }}
+          sha: ${{ env.HEAD_SHA }}
+          files: "**/*.go"
+
+      - name: Assert no Go files matched
+        env:
+          ANY_CHANGED: ${{ steps.go_changed.outputs.any_changed }}
+          ALL_CHANGED: ${{ steps.go_changed.outputs.all_changed_files }}
+        run: |
+          echo "any_changed: $ANY_CHANGED"
+          echo "all_changed_files: $ALL_CHANGED"
+
+          if [ "$ANY_CHANGED" = "true" ]; then
+            echo "FAIL: expected any_changed=false for Go files (none were added)"
+            exit 1
+          fi
+          echo "PASS: any_changed=false for non-matching Go pattern"
+
+      - name: Clean up test files
+        if: always()
+        run: |
+          git rm -rf tests/tmp-pattern-test/ 2>/dev/null || true
+          git commit -m "Cleanup pattern test files" 2>/dev/null || true

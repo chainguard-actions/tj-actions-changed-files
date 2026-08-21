@@ -1,0 +1,96 @@
+name: Test custom separator output
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up git and create commits with multiple files
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+          BASE_SHA=$(git rev-parse HEAD)
+          echo "BASE_SHA=$BASE_SHA" >> $GITHUB_ENV
+
+          mkdir -p tests/tmp-sep-test
+          echo "alpha" > tests/tmp-sep-test/alpha.txt
+          echo "beta" > tests/tmp-sep-test/beta.txt
+          echo "gamma" > tests/tmp-sep-test/gamma.txt
+
+          git add tests/tmp-sep-test/
+          git commit -m "Add files for separator test"
+
+          HEAD_SHA=$(git rev-parse HEAD)
+          echo "HEAD_SHA=$HEAD_SHA" >> $GITHUB_ENV
+
+      - name: Run with comma separator
+        id: changed_comma
+        uses: .
+        with:
+          base_sha: ${{ env.BASE_SHA }}
+          sha: ${{ env.HEAD_SHA }}
+          separator: ","
+
+      - name: Assert comma-separated output
+        env:
+          ALL_CHANGED: ${{ steps.changed_comma.outputs.all_changed_files }}
+          ADDED: ${{ steps.changed_comma.outputs.added_files }}
+        run: |
+          echo "all_changed_files (comma): $ALL_CHANGED"
+          echo "added_files (comma): $ADDED"
+
+          if [ -z "$ALL_CHANGED" ]; then
+            echo "FAIL: expected non-empty output"
+            exit 1
+          fi
+
+          # With multiple files and comma separator, output should contain commas
+          # (when there are 2+ files)
+          FILE_COUNT=$(echo "$ALL_CHANGED" | tr ',' '\n' | wc -l)
+          echo "File count via comma split: $FILE_COUNT"
+
+          if [ "$FILE_COUNT" -lt 2 ]; then
+            echo "FAIL: expected at least 2 comma-separated files, got $FILE_COUNT"
+            exit 1
+          fi
+          echo "PASS: comma-separated output has $FILE_COUNT files"
+
+      - name: Run with pipe separator
+        id: changed_pipe
+        uses: .
+        with:
+          base_sha: ${{ env.BASE_SHA }}
+          sha: ${{ env.HEAD_SHA }}
+          separator: "|"
+
+      - name: Assert pipe-separated output
+        env:
+          ALL_CHANGED: ${{ steps.changed_pipe.outputs.all_changed_files }}
+        run: |
+          echo "all_changed_files (pipe): $ALL_CHANGED"
+
+          if [ -z "$ALL_CHANGED" ]; then
+            echo "FAIL: expected non-empty output"
+            exit 1
+          fi
+
+          # With multiple files and pipe separator, output should contain pipes
+          FILE_COUNT=$(echo "$ALL_CHANGED" | tr '|' '\n' | wc -l)
+          echo "File count via pipe split: $FILE_COUNT"
+
+          if [ "$FILE_COUNT" -lt 2 ]; then
+            echo "FAIL: expected at least 2 pipe-separated files, got $FILE_COUNT"
+            exit 1
+          fi
+          echo "PASS: pipe-separated output has $FILE_COUNT files"
+
+      - name: Clean up test files
+        if: always()
+        run: |
+          git rm -rf tests/tmp-sep-test/ 2>/dev/null || true
+          git commit -m "Cleanup separator test files" 2>/dev/null || true

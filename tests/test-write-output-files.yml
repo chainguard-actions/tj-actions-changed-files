@@ -1,0 +1,71 @@
+name: Test write_output_files feature
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up git and create commits
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+          BASE_SHA=$(git rev-parse HEAD)
+          echo "BASE_SHA=$BASE_SHA" >> $GITHUB_ENV
+
+          mkdir -p tests/tmp-write-test
+          echo "output file test" > tests/tmp-write-test/output-test.txt
+          git add tests/tmp-write-test/
+          git commit -m "Add file for write_output_files test"
+
+          HEAD_SHA=$(git rev-parse HEAD)
+          echo "HEAD_SHA=$HEAD_SHA" >> $GITHUB_ENV
+
+      - id: changed
+        uses: .
+        with:
+          base_sha: ${{ env.BASE_SHA }}
+          sha: ${{ env.HEAD_SHA }}
+          write_output_files: "true"
+          output_dir: ".github/outputs"
+
+      - name: Assert output files were written
+        env:
+          ALL_CHANGED: ${{ steps.changed.outputs.all_changed_files }}
+        run: |
+          echo "all_changed_files: $ALL_CHANGED"
+
+          # Check that the output directory was created
+          if [ ! -d ".github/outputs" ]; then
+            echo "FAIL: expected .github/outputs directory to exist"
+            exit 1
+          fi
+          echo "PASS: .github/outputs directory exists"
+
+          # Check that at least one output file was written
+          FILE_COUNT=$(ls .github/outputs/*.txt 2>/dev/null | wc -l)
+          echo "Output .txt files found: $FILE_COUNT"
+
+          if [ "$FILE_COUNT" -lt 1 ]; then
+            echo "FAIL: expected at least one .txt output file in .github/outputs"
+            exit 1
+          fi
+          echo "PASS: found $FILE_COUNT output file(s)"
+
+          # Verify the action output is also set
+          if [ -z "$ALL_CHANGED" ]; then
+            echo "FAIL: expected all_changed_files output to be set"
+            exit 1
+          fi
+          echo "PASS: all_changed_files output is set: $ALL_CHANGED"
+
+      - name: Clean up test files
+        if: always()
+        run: |
+          git rm -rf tests/tmp-write-test/ 2>/dev/null || true
+          git commit -m "Cleanup write_output_files test" 2>/dev/null || true
+          rm -rf .github/outputs 2>/dev/null || true

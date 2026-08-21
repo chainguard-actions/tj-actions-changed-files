@@ -1,0 +1,85 @@
+name: Test files_yaml grouped pattern matching
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up git and create commits with multiple file types
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+          BASE_SHA=$(git rev-parse HEAD)
+          echo "BASE_SHA=$BASE_SHA" >> $GITHUB_ENV
+
+          mkdir -p tests/tmp-yaml-test/src
+          mkdir -p tests/tmp-yaml-test/docs
+          echo "source code" > tests/tmp-yaml-test/src/main.go
+          echo "documentation" > tests/tmp-yaml-test/docs/guide.md
+
+          git add tests/tmp-yaml-test/
+          git commit -m "Add files for files_yaml test"
+
+          HEAD_SHA=$(git rev-parse HEAD)
+          echo "HEAD_SHA=$HEAD_SHA" >> $GITHUB_ENV
+
+      - id: changed_yaml
+        uses: .
+        with:
+          base_sha: ${{ env.BASE_SHA }}
+          sha: ${{ env.HEAD_SHA }}
+          files_yaml: |
+            source:
+              - tests/tmp-yaml-test/src/**
+            docs:
+              - tests/tmp-yaml-test/docs/**
+
+      - name: Assert files_yaml outputs
+        env:
+          SOURCE_ANY_CHANGED: ${{ steps.changed_yaml.outputs.source_any_changed }}
+          SOURCE_ALL_CHANGED: ${{ steps.changed_yaml.outputs.source_all_changed_files }}
+          DOCS_ANY_CHANGED: ${{ steps.changed_yaml.outputs.docs_any_changed }}
+          DOCS_ALL_CHANGED: ${{ steps.changed_yaml.outputs.docs_all_changed_files }}
+          CHANGED_KEYS: ${{ steps.changed_yaml.outputs.changed_keys }}
+        run: |
+          echo "source_any_changed: $SOURCE_ANY_CHANGED"
+          echo "source_all_changed_files: $SOURCE_ALL_CHANGED"
+          echo "docs_any_changed: $DOCS_ANY_CHANGED"
+          echo "docs_all_changed_files: $DOCS_ALL_CHANGED"
+          echo "changed_keys: $CHANGED_KEYS"
+
+          # Source files should be detected as changed
+          if [ "$SOURCE_ANY_CHANGED" != "true" ]; then
+            echo "FAIL: expected source_any_changed=true"
+            exit 1
+          fi
+          echo "PASS: source_any_changed=true"
+
+          # Docs files should be detected as changed
+          if [ "$DOCS_ANY_CHANGED" != "true" ]; then
+            echo "FAIL: expected docs_any_changed=true"
+            exit 1
+          fi
+          echo "PASS: docs_any_changed=true"
+
+          # changed_keys should contain both 'source' and 'docs'
+          if ! echo "$CHANGED_KEYS" | grep -q "source"; then
+            echo "FAIL: expected 'source' in changed_keys, got: $CHANGED_KEYS"
+            exit 1
+          fi
+          if ! echo "$CHANGED_KEYS" | grep -q "docs"; then
+            echo "FAIL: expected 'docs' in changed_keys, got: $CHANGED_KEYS"
+            exit 1
+          fi
+          echo "PASS: changed_keys contains both 'source' and 'docs'"
+
+      - name: Clean up test files
+        if: always()
+        run: |
+          git rm -rf tests/tmp-yaml-test/ 2>/dev/null || true
+          git commit -m "Cleanup files_yaml test" 2>/dev/null || true

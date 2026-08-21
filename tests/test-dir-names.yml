@@ -1,99 +1,73 @@
-name: Test dir_names and dir_names_max_depth inputs
+name: Test dir_names output mode
 on:
   workflow_dispatch:
 jobs:
   test:
     runs-on: ubuntu-latest
-    env:
-      GITHUB_REF: refs/heads/main
-      GITHUB_EVENT_NAME: push
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
 
-      - name: Set up git and create nested directory commits
-        id: setup
+      - name: Set up git and create commits in subdirectories
         run: |
           git config user.email "test@example.com"
           git config user.name "Test User"
 
-          # Record the base SHA
           BASE_SHA=$(git rev-parse HEAD)
-          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "BASE_SHA=$BASE_SHA" >> $GITHUB_ENV
 
-          # Create a nested directory structure and commit
-          mkdir -p test-dir/level1/level2
-          echo "content" > test-dir/level1/level2/file.txt
-          git add test-dir/
-          git commit -m "Add nested test directory for dir_names test"
+          # Create files in a specific subdirectory
+          mkdir -p tests/tmp-dir-test/subdir-a
+          mkdir -p tests/tmp-dir-test/subdir-b
+          echo "content a" > tests/tmp-dir-test/subdir-a/file.txt
+          echo "content b" > tests/tmp-dir-test/subdir-b/file.txt
 
-          # Record the new HEAD SHA
+          git add tests/tmp-dir-test/
+          git commit -m "Add files in subdirectories for dir_names test"
+
           HEAD_SHA=$(git rev-parse HEAD)
-          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "HEAD_SHA=$HEAD_SHA" >> $GITHUB_ENV
 
-      - id: changed
+      - id: changed_dirs
         uses: .
         with:
-          sha: ${{ steps.setup.outputs.head_sha }}
-          base_sha: ${{ steps.setup.outputs.base_sha }}
+          base_sha: ${{ env.BASE_SHA }}
+          sha: ${{ env.HEAD_SHA }}
           dir_names: "true"
-          dir_names_max_depth: "2"
-          dir_names_exclude_current_dir: "false"
-          dir_names_deleted_files_include_only_deleted_dirs: "false"
-          dir_names_include_files: ""
-          dir_names_include_files_separator: "\n"
-          separator: " "
-          safe_output: "true"
-          fetch_depth: "25"
-          json: "false"
-          escape_json: "true"
-          quotepath: "true"
-          diff_relative: "true"
-          write_output_files: "false"
-          output_dir: ".github/outputs"
-          use_rest_api: "false"
-          fail_on_initial_diff_error: "false"
-          fail_on_submodule_diff_error: "false"
-          negation_patterns_first: "false"
-          matrix: "false"
-          exclude_submodules: "false"
-          fetch_missing_history_max_retries: "20"
-          use_posix_path_separator: "false"
-          tags_pattern: "*"
-          tags_ignore_pattern: ""
-          skip_initial_fetch: "false"
-          fetch_additional_submodule_history: "false"
-          since_last_remote_commit: "false"
-          include_all_old_new_renamed_files: "false"
-          old_new_separator: ","
-          old_new_files_separator: " "
-          output_renamed_files_as_deleted_and_added: "false"
-          recover_deleted_files: "false"
-          recover_deleted_files_to_destination: ""
-          recover_files: ""
-          recover_files_separator: "\n"
-          recover_files_ignore: ""
-          recover_files_ignore_separator: "\n"
 
-      - name: Assert dir_names output respects max_depth of 2
+      - name: Assert dir_names output contains directory paths
         env:
-          ALL_CHANGED: ${{ steps.changed.outputs.all_changed_files }}
-          ALL_MODIFIED: ${{ steps.changed.outputs.all_modified_files }}
-          ADDED_FILES: ${{ steps.changed.outputs.added_files }}
+          ALL_CHANGED: ${{ steps.changed_dirs.outputs.all_changed_files }}
+          ALL_CHANGED_COUNT: ${{ steps.changed_dirs.outputs.all_changed_files_count }}
         run: |
           echo "all_changed_files (dirs): $ALL_CHANGED"
-          echo "all_modified_files (dirs): $ALL_MODIFIED"
-          echo "added_files (dirs): $ADDED_FILES"
+          echo "all_changed_files_count: $ALL_CHANGED_COUNT"
 
-          # With dir_names=true and max_depth=2, the path test-dir/level1/level2/file.txt
-          # should be reported as test-dir/level1 (depth 2), not test-dir/level1/level2
-          for dir in $ALL_CHANGED; do
-            depth=$(echo "$dir" | tr -cd '/' | wc -c)
-            echo "Checking dir: $dir (depth: $depth)"
-            if [ "$depth" -gt 1 ]; then
-              echo "FAIL: directory '$dir' exceeds max_depth of 2 (has $((depth+1)) components)"
-              exit 1
-            fi
-          done
-          echo "PASS: all directory outputs respect max_depth=2"
+          if [ -z "$ALL_CHANGED" ]; then
+            echo "FAIL: expected non-empty dir output"
+            exit 1
+          fi
+          echo "PASS: dir output is non-empty"
+
+          # Should contain directory paths, not individual files
+          # The output should contain 'subdir-a' or 'subdir-b' or their parent
+          if echo "$ALL_CHANGED" | grep -qE "subdir-[ab]|tmp-dir-test"; then
+            echo "PASS: directory names found in output"
+          else
+            echo "FAIL: expected directory names in output, got: $ALL_CHANGED"
+            exit 1
+          fi
+
+          # Verify count is set
+          if [ -z "$ALL_CHANGED_COUNT" ] || [ "$ALL_CHANGED_COUNT" -lt 1 ]; then
+            echo "FAIL: expected all_changed_files_count >= 1, got: $ALL_CHANGED_COUNT"
+            exit 1
+          fi
+          echo "PASS: count=$ALL_CHANGED_COUNT"
+
+      - name: Clean up test files
+        if: always()
+        run: |
+          git rm -rf tests/tmp-dir-test/ 2>/dev/null || true
+          git commit -m "Cleanup dir_names test files" 2>/dev/null || true
