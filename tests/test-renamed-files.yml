@@ -1,0 +1,76 @@
+name: Test renamed files detection
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up git identity
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+      - name: Create a base commit with a file to be renamed
+        run: |
+          mkdir -p tests/rename-test
+          echo "file content to be renamed" > tests/rename-test/original-name.txt
+          git add tests/rename-test/original-name.txt
+          git commit -m "Add original-name.txt"
+
+      - name: Rename the file in the next commit
+        run: |
+          git mv tests/rename-test/original-name.txt tests/rename-test/new-name.txt
+          git commit -m "Rename original-name.txt to new-name.txt"
+
+      - id: changed
+        uses: .
+        with:
+          fetch_depth: "2"
+          include_all_old_new_renamed_files: "true"
+
+      - name: Assert renamed_files contains the new name
+        env:
+          RENAMED: ${{ steps.changed.outputs.renamed_files }}
+          RENAMED_COUNT: ${{ steps.changed.outputs.renamed_files_count }}
+        run: |
+          echo "renamed_files: $RENAMED"
+          echo "renamed_files_count: $RENAMED_COUNT"
+          if echo "$RENAMED" | grep -q "new-name.txt"; then
+            echo "PASS: new-name.txt found in renamed_files"
+          else
+            echo "FAIL: new-name.txt not found in renamed_files"
+            exit 1
+          fi
+          if [ "$RENAMED_COUNT" -lt 1 ]; then
+            echo "FAIL: expected renamed_files_count >= 1 but got $RENAMED_COUNT"
+            exit 1
+          fi
+          echo "PASS: renamed_files_count is $RENAMED_COUNT"
+
+      - name: Assert all_old_new_renamed_files contains both old and new names
+        env:
+          ALL_OLD_NEW: ${{ steps.changed.outputs.all_old_new_renamed_files }}
+          ALL_OLD_NEW_COUNT: ${{ steps.changed.outputs.all_old_new_renamed_files_count }}
+        run: |
+          echo "all_old_new_renamed_files: $ALL_OLD_NEW"
+          echo "all_old_new_renamed_files_count: $ALL_OLD_NEW_COUNT"
+          if [ -z "$ALL_OLD_NEW" ]; then
+            echo "FAIL: all_old_new_renamed_files is empty"
+            exit 1
+          fi
+          if echo "$ALL_OLD_NEW" | grep -q "original-name.txt"; then
+            echo "PASS: original-name.txt (old name) found in all_old_new_renamed_files"
+          else
+            echo "FAIL: original-name.txt not found in all_old_new_renamed_files"
+            exit 1
+          fi
+          if echo "$ALL_OLD_NEW" | grep -q "new-name.txt"; then
+            echo "PASS: new-name.txt (new name) found in all_old_new_renamed_files"
+          else
+            echo "FAIL: new-name.txt not found in all_old_new_renamed_files"
+            exit 1
+          fi

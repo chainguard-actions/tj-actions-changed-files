@@ -1,0 +1,64 @@
+name: Test added files detection
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up git identity
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+      - name: Create a base commit
+        run: |
+          echo "existing file" > tests/existing-file.txt
+          git add tests/existing-file.txt
+          git commit -m "Add existing file"
+
+      - name: Add a new file in the next commit
+        run: |
+          echo "brand new file" > tests/new-added-file.txt
+          git add tests/new-added-file.txt
+          git commit -m "Add new-added-file.txt"
+
+      - id: changed
+        uses: .
+        with:
+          fetch_depth: "2"
+
+      - name: Assert added_files contains the new file
+        env:
+          ADDED: ${{ steps.changed.outputs.added_files }}
+          ADDED_COUNT: ${{ steps.changed.outputs.added_files_count }}
+        run: |
+          echo "added_files: $ADDED"
+          echo "added_files_count: $ADDED_COUNT"
+          if echo "$ADDED" | grep -q "new-added-file.txt"; then
+            echo "PASS: new-added-file.txt found in added_files"
+          else
+            echo "FAIL: new-added-file.txt not found in added_files"
+            exit 1
+          fi
+          if [ "$ADDED_COUNT" -lt 1 ]; then
+            echo "FAIL: expected added_files_count >= 1 but got $ADDED_COUNT"
+            exit 1
+          fi
+          echo "PASS: added_files_count is $ADDED_COUNT"
+
+      - name: Assert all_changed_files includes the added file
+        env:
+          ALL_CHANGED: ${{ steps.changed.outputs.all_changed_files }}
+          ANY_CHANGED: ${{ steps.changed.outputs.any_changed }}
+        run: |
+          echo "all_changed_files: $ALL_CHANGED"
+          echo "any_changed: $ANY_CHANGED"
+          if [ "$ANY_CHANGED" != "true" ]; then
+            echo "FAIL: expected any_changed=true"
+            exit 1
+          fi
+          echo "PASS: any_changed is true"

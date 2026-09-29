@@ -1,0 +1,61 @@
+name: Test basic changed-files detection
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up git identity
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+      - name: Create a base commit with a file
+        run: |
+          echo "hello world" > tests/test-file-basic.txt
+          git add tests/test-file-basic.txt
+          git commit -m "Add test-file-basic.txt"
+
+      - name: Modify the file to create a changed file
+        run: |
+          echo "hello world updated" > tests/test-file-basic.txt
+          git add tests/test-file-basic.txt
+          git commit -m "Modify test-file-basic.txt"
+
+      - id: changed
+        uses: .
+        with:
+          fetch_depth: "2"
+
+      - name: Assert any_changed_and_modified_files is non-empty
+        env:
+          ALL_CHANGED: ${{ steps.changed.outputs.all_changed_and_modified_files }}
+          COUNT: ${{ steps.changed.outputs.all_changed_and_modified_files_count }}
+        run: |
+          echo "all_changed_and_modified_files: $ALL_CHANGED"
+          echo "all_changed_and_modified_files_count: $COUNT"
+          if [ -z "$ALL_CHANGED" ]; then
+            echo "FAIL: expected some changed files but got empty"
+            exit 1
+          fi
+          if [ "$COUNT" -lt 1 ]; then
+            echo "FAIL: expected count >= 1 but got $COUNT"
+            exit 1
+          fi
+          echo "PASS"
+
+      - name: Assert modified_files contains our file
+        env:
+          MODIFIED: ${{ steps.changed.outputs.modified_files }}
+        run: |
+          echo "modified_files: $MODIFIED"
+          if echo "$MODIFIED" | grep -q "test-file-basic.txt"; then
+            echo "PASS: test-file-basic.txt found in modified_files"
+          else
+            echo "FAIL: test-file-basic.txt not found in modified_files"
+            exit 1
+          fi

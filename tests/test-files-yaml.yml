@@ -1,0 +1,84 @@
+name: Test files_yaml pattern groups
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up git identity
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+      - name: Create a base commit with files in different groups
+        run: |
+          mkdir -p tests/yaml-test/frontend tests/yaml-test/backend
+          echo "frontend code" > tests/yaml-test/frontend/app.js
+          echo "backend code" > tests/yaml-test/backend/server.py
+          git add tests/yaml-test/
+          git commit -m "Add frontend and backend files"
+
+      - name: Modify only the frontend file
+        run: |
+          echo "frontend code updated" > tests/yaml-test/frontend/app.js
+          git add tests/yaml-test/frontend/app.js
+          git commit -m "Modify frontend/app.js"
+
+      - id: changed
+        uses: .
+        with:
+          fetch_depth: "2"
+          files_yaml: |
+            frontend:
+              - tests/yaml-test/frontend/**
+            backend:
+              - tests/yaml-test/backend/**
+
+      - name: Assert changed_keys contains frontend
+        env:
+          CHANGED_KEYS: ${{ steps.changed.outputs.changed_keys }}
+        run: |
+          echo "changed_keys: $CHANGED_KEYS"
+          if echo "$CHANGED_KEYS" | grep -q "frontend"; then
+            echo "PASS: frontend key found in changed_keys"
+          else
+            echo "FAIL: expected 'frontend' in changed_keys but got: $CHANGED_KEYS"
+            exit 1
+          fi
+
+      - name: Assert changed_keys does NOT contain backend (not modified)
+        env:
+          CHANGED_KEYS: ${{ steps.changed.outputs.changed_keys }}
+        run: |
+          echo "changed_keys: $CHANGED_KEYS"
+          if echo "$CHANGED_KEYS" | grep -q "backend"; then
+            echo "FAIL: backend should not be in changed_keys (no backend files changed)"
+            exit 1
+          fi
+          echo "PASS: backend correctly not in changed_keys"
+
+      - name: Assert frontend any_changed output is true
+        env:
+          FRONTEND_ANY_CHANGED: ${{ steps.changed.outputs.frontend_any_changed }}
+        run: |
+          echo "frontend_any_changed: $FRONTEND_ANY_CHANGED"
+          if [ "$FRONTEND_ANY_CHANGED" != "true" ]; then
+            echo "FAIL: expected frontend_any_changed=true"
+            exit 1
+          fi
+          echo "PASS: frontend_any_changed is true"
+
+      - name: Assert backend any_changed output is false
+        env:
+          BACKEND_ANY_CHANGED: ${{ steps.changed.outputs.backend_any_changed }}
+        run: |
+          echo "backend_any_changed: $BACKEND_ANY_CHANGED"
+          if [ "$BACKEND_ANY_CHANGED" != "false" ]; then
+            echo "FAIL: expected backend_any_changed=false but got $BACKEND_ANY_CHANGED"
+            exit 1
+          fi
+          echo "PASS: backend_any_changed is false"

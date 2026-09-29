@@ -1,0 +1,88 @@
+name: Test files filter pattern
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up git identity
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+      - name: Create base commit with two different files
+        run: |
+          mkdir -p tests/src tests/docs
+          echo "source code" > tests/src/app.js
+          echo "documentation" > tests/docs/readme.md
+          git add tests/src/app.js tests/docs/readme.md
+          git commit -m "Add src and docs files"
+
+      - name: Modify both files
+        run: |
+          echo "source code updated" > tests/src/app.js
+          echo "documentation updated" > tests/docs/readme.md
+          git add tests/src/app.js tests/docs/readme.md
+          git commit -m "Modify src and docs files"
+
+      - id: changed_src
+        uses: .
+        with:
+          fetch_depth: "2"
+          files: |
+            tests/src/**
+
+      - name: Assert any_changed is true for src files
+        env:
+          ANY_CHANGED: ${{ steps.changed_src.outputs.any_changed }}
+          CHANGED_FILES: ${{ steps.changed_src.outputs.all_changed_files }}
+        run: |
+          echo "any_changed: $ANY_CHANGED"
+          echo "all_changed_files: $CHANGED_FILES"
+          if [ "$ANY_CHANGED" != "true" ]; then
+            echo "FAIL: expected any_changed=true for src files"
+            exit 1
+          fi
+          echo "PASS: any_changed is true for src files"
+
+      - id: changed_docs
+        uses: .
+        with:
+          fetch_depth: "2"
+          files: |
+            tests/docs/**
+
+      - name: Assert any_changed is true for docs files
+        env:
+          ANY_CHANGED: ${{ steps.changed_docs.outputs.any_changed }}
+          CHANGED_FILES: ${{ steps.changed_docs.outputs.all_changed_files }}
+        run: |
+          echo "any_changed: $ANY_CHANGED"
+          echo "all_changed_files: $CHANGED_FILES"
+          if [ "$ANY_CHANGED" != "true" ]; then
+            echo "FAIL: expected any_changed=true for docs files"
+            exit 1
+          fi
+          echo "PASS: any_changed is true for docs files"
+
+      - id: changed_nonexistent
+        uses: .
+        with:
+          fetch_depth: "2"
+          files: |
+            tests/nonexistent/**
+
+      - name: Assert any_changed is false for nonexistent pattern
+        env:
+          ANY_CHANGED: ${{ steps.changed_nonexistent.outputs.any_changed }}
+        run: |
+          echo "any_changed: $ANY_CHANGED"
+          if [ "$ANY_CHANGED" != "false" ]; then
+            echo "FAIL: expected any_changed=false for nonexistent pattern, got $ANY_CHANGED"
+            exit 1
+          fi
+          echo "PASS: any_changed is false for nonexistent pattern"

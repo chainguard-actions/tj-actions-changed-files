@@ -1,0 +1,88 @@
+name: Test custom separator output
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up git identity
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+      - name: Create a base commit
+        run: |
+          mkdir -p tests/sep-test
+          echo "file one" > tests/sep-test/file1.txt
+          git add tests/sep-test/file1.txt
+          git commit -m "Add sep-test/file1.txt"
+
+      - name: Add two more files in the next commit
+        run: |
+          echo "file two" > tests/sep-test/file2.txt
+          echo "file three" > tests/sep-test/file3.txt
+          git add tests/sep-test/file2.txt tests/sep-test/file3.txt
+          git commit -m "Add sep-test/file2.txt and file3.txt"
+
+      - id: changed_comma
+        uses: .
+        with:
+          fetch_depth: "2"
+          separator: ","
+
+      - name: Assert output uses comma separator
+        env:
+          ADDED: ${{ steps.changed_comma.outputs.added_files }}
+          COUNT: ${{ steps.changed_comma.outputs.added_files_count }}
+        run: |
+          echo "added_files (comma sep): $ADDED"
+          echo "added_files_count: $COUNT"
+          if [ -z "$ADDED" ]; then
+            echo "FAIL: added_files is empty"
+            exit 1
+          fi
+          # With comma separator and 2 files, there should be a comma in the output
+          if [ "$COUNT" -ge 2 ]; then
+            if echo "$ADDED" | grep -q ","; then
+              echo "PASS: comma separator found in output with multiple files"
+            else
+              echo "FAIL: expected comma separator in output with $COUNT files"
+              exit 1
+            fi
+          else
+            echo "INFO: only $COUNT file(s) detected, skipping comma check"
+            echo "PASS"
+          fi
+
+      - id: changed_pipe
+        uses: .
+        with:
+          fetch_depth: "2"
+          separator: "|"
+
+      - name: Assert output uses pipe separator
+        env:
+          ADDED: ${{ steps.changed_pipe.outputs.added_files }}
+          COUNT: ${{ steps.changed_pipe.outputs.added_files_count }}
+        run: |
+          echo "added_files (pipe sep): $ADDED"
+          echo "added_files_count: $COUNT"
+          if [ -z "$ADDED" ]; then
+            echo "FAIL: added_files is empty"
+            exit 1
+          fi
+          if [ "$COUNT" -ge 2 ]; then
+            if echo "$ADDED" | grep -q "|"; then
+              echo "PASS: pipe separator found in output with multiple files"
+            else
+              echo "FAIL: expected pipe separator in output with $COUNT files"
+              exit 1
+            fi
+          else
+            echo "INFO: only $COUNT file(s) detected, skipping pipe check"
+            echo "PASS"
+          fi

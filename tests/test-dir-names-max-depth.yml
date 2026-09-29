@@ -1,0 +1,43 @@
+name: Test dir_names_max_depth input
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Create nested directory structure and commit files
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+          mkdir -p deep/level1/level2/level3
+          echo "file content" > deep/level1/level2/level3/file.txt
+          git add deep/level1/level2/level3/file.txt
+          git commit -m "Add deeply nested file for dir_names_max_depth test"
+
+      - id: changed
+        uses: .
+        with:
+          dir_names: "true"
+          dir_names_max_depth: "2"
+          since_last_remote_commit: "true"
+
+      - name: Assert dir_names_max_depth limits output depth
+        env:
+          ALL_MODIFIED: ${{ steps.changed.outputs.all_modified_files }}
+        run: |
+          echo "all_modified_files: $ALL_MODIFIED"
+          # With max_depth=2, we expect at most 2 levels deep (e.g. deep/level1)
+          # not deep/level1/level2 or deeper
+          for dir in $ALL_MODIFIED; do
+            depth=$(echo "$dir" | tr -cd '/' | wc -c)
+            echo "dir: $dir, depth (slashes): $depth"
+            if [ "$depth" -ge 2 ]; then
+              echo "FAIL: directory '$dir' exceeds max depth of 2 (has $depth slashes)"
+              exit 1
+            fi
+          done
+          echo "PASS: all directories are within max depth of 2"

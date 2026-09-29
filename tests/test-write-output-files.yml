@@ -1,0 +1,69 @@
+name: Test write_output_files feature
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up git identity
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+      - name: Create a base commit
+        run: |
+          mkdir -p tests/output-test
+          echo "base file" > tests/output-test/base.txt
+          git add tests/output-test/base.txt
+          git commit -m "Add base.txt"
+
+      - name: Add a new file
+        run: |
+          echo "new file" > tests/output-test/new.txt
+          git add tests/output-test/new.txt
+          git commit -m "Add new.txt"
+
+      - id: changed
+        uses: .
+        with:
+          fetch_depth: "2"
+          write_output_files: "true"
+          output_dir: "tests/changed-files-output"
+
+      - name: Assert output directory was created
+        run: |
+          echo "Checking output directory..."
+          if [ -d "tests/changed-files-output" ]; then
+            echo "PASS: output directory exists"
+            ls -la tests/changed-files-output/
+          else
+            echo "FAIL: output directory 'tests/changed-files-output' was not created"
+            exit 1
+          fi
+
+      - name: Assert output files were written
+        run: |
+          # The action writes .txt files for each output type
+          if ls tests/changed-files-output/*.txt 2>/dev/null | head -1 | grep -q ".txt"; then
+            echo "PASS: output .txt files were written"
+            ls tests/changed-files-output/*.txt
+          else
+            echo "FAIL: no .txt output files found in tests/changed-files-output/"
+            exit 1
+          fi
+
+      - name: Assert added_files output contains new.txt
+        env:
+          ADDED: ${{ steps.changed.outputs.added_files }}
+        run: |
+          echo "added_files: $ADDED"
+          if echo "$ADDED" | grep -q "new.txt"; then
+            echo "PASS: new.txt found in added_files output"
+          else
+            echo "FAIL: new.txt not found in added_files output"
+            exit 1
+          fi

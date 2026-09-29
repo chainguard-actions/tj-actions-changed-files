@@ -1,0 +1,47 @@
+name: Test sha input
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Create commits to compare using sha input
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+          # Record the current HEAD as base
+          echo "BASE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          # Create a new file and commit it
+          echo "sha test content" > sha-test-file.txt
+          git add sha-test-file.txt
+          git commit -m "Add sha-test-file for sha input test"
+          # Record the new HEAD as the target sha
+          echo "TARGET_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - id: changed
+        uses: .
+        with:
+          sha: ${{ env.TARGET_SHA }}
+          base_sha: ${{ env.BASE_SHA }}
+
+      - name: Assert sha input works and detects added file
+        env:
+          ADDED: ${{ steps.changed.outputs.added_files }}
+          ANY_CHANGED: ${{ steps.changed.outputs.any_changed }}
+        run: |
+          echo "added_files: $ADDED"
+          echo "any_changed: $ANY_CHANGED"
+          if [ "$ANY_CHANGED" != "true" ]; then
+            echo "FAIL: expected any_changed to be true"
+            exit 1
+          fi
+          if echo "$ADDED" | grep -q "sha-test-file.txt"; then
+            echo "PASS: sha-test-file.txt found in added_files"
+          else
+            echo "FAIL: sha-test-file.txt not found in added_files: $ADDED"
+            exit 1
+          fi

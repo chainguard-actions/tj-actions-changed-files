@@ -1,0 +1,79 @@
+name: Test files_ignore pattern
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up git identity
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+      - name: Create a base commit with multiple files
+        run: |
+          mkdir -p tests/ignore-test
+          echo "important source" > tests/ignore-test/important.go
+          echo "generated file" > tests/ignore-test/generated.pb.go
+          git add tests/ignore-test/
+          git commit -m "Add important and generated files"
+
+      - name: Modify both files
+        run: |
+          echo "important source updated" > tests/ignore-test/important.go
+          echo "generated file updated" > tests/ignore-test/generated.pb.go
+          git add tests/ignore-test/
+          git commit -m "Modify important and generated files"
+
+      - id: changed_all
+        uses: .
+        with:
+          fetch_depth: "2"
+
+      - name: Assert both files are detected without ignore
+        env:
+          ALL_CHANGED: ${{ steps.changed_all.outputs.all_changed_and_modified_files }}
+        run: |
+          echo "all_changed_and_modified_files (no ignore): $ALL_CHANGED"
+          if echo "$ALL_CHANGED" | grep -q "important.go" && echo "$ALL_CHANGED" | grep -q "generated.pb.go"; then
+            echo "PASS: both files detected without ignore"
+          else
+            echo "FAIL: expected both files in output"
+            exit 1
+          fi
+
+      - id: changed_ignore
+        uses: .
+        with:
+          fetch_depth: "2"
+          files_ignore: |
+            tests/ignore-test/*.pb.go
+
+      - name: Assert generated file is excluded when ignored
+        env:
+          ALL_CHANGED: ${{ steps.changed_ignore.outputs.all_changed_and_modified_files }}
+          ANY_CHANGED: ${{ steps.changed_ignore.outputs.any_changed }}
+        run: |
+          echo "all_changed_and_modified_files (with ignore): $ALL_CHANGED"
+          echo "any_changed: $ANY_CHANGED"
+          if echo "$ALL_CHANGED" | grep -q "generated.pb.go"; then
+            echo "FAIL: generated.pb.go should be ignored but was found in output"
+            exit 1
+          fi
+          echo "PASS: generated.pb.go is correctly excluded"
+
+      - name: Assert important file is still detected
+        env:
+          ALL_CHANGED: ${{ steps.changed_ignore.outputs.all_changed_and_modified_files }}
+        run: |
+          echo "all_changed_and_modified_files: $ALL_CHANGED"
+          if echo "$ALL_CHANGED" | grep -q "important.go"; then
+            echo "PASS: important.go is still detected"
+          else
+            echo "FAIL: important.go should still be detected but was not found"
+            exit 1
+          fi

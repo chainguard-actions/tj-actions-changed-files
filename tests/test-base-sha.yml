@@ -1,0 +1,72 @@
+name: Test base_sha comparison
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up git identity
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+      - name: Create commit A (base)
+        run: |
+          mkdir -p tests/sha-test
+          echo "commit A file" > tests/sha-test/commit-a.txt
+          git add tests/sha-test/commit-a.txt
+          git commit -m "Commit A: add commit-a.txt"
+          echo "BASE_SHA=$(git rev-parse HEAD)" >> $GITHUB_ENV
+
+      - name: Create commit B
+        run: |
+          echo "commit B file" > tests/sha-test/commit-b.txt
+          git add tests/sha-test/commit-b.txt
+          git commit -m "Commit B: add commit-b.txt"
+
+      - name: Create commit C (HEAD)
+        run: |
+          echo "commit C file" > tests/sha-test/commit-c.txt
+          git add tests/sha-test/commit-c.txt
+          git commit -m "Commit C: add commit-c.txt"
+
+      - id: changed
+        uses: .
+        with:
+          base_sha: ${{ env.BASE_SHA }}
+
+      - name: Assert files added after base_sha are detected
+        env:
+          ADDED: ${{ steps.changed.outputs.added_files }}
+          ADDED_COUNT: ${{ steps.changed.outputs.added_files_count }}
+        run: |
+          echo "added_files: $ADDED"
+          echo "added_files_count: $ADDED_COUNT"
+          # commit-b.txt and commit-c.txt were added after BASE_SHA
+          if echo "$ADDED" | grep -q "commit-b.txt"; then
+            echo "PASS: commit-b.txt found in added_files"
+          else
+            echo "FAIL: commit-b.txt not found in added_files"
+            exit 1
+          fi
+          if echo "$ADDED" | grep -q "commit-c.txt"; then
+            echo "PASS: commit-c.txt found in added_files"
+          else
+            echo "FAIL: commit-c.txt not found in added_files"
+            exit 1
+          fi
+
+      - name: Assert commit-a.txt is NOT in added_files (it was the base)
+        env:
+          ADDED: ${{ steps.changed.outputs.added_files }}
+        run: |
+          echo "added_files: $ADDED"
+          if echo "$ADDED" | grep -q "commit-a.txt"; then
+            echo "FAIL: commit-a.txt should not be in added_files (it was the base commit)"
+            exit 1
+          fi
+          echo "PASS: commit-a.txt correctly excluded from added_files"

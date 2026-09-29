@@ -1,0 +1,75 @@
+name: Test deleted files detection
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up git identity
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+      - name: Create a base commit with a file to be deleted
+        run: |
+          echo "file to be deleted" > tests/file-to-delete.txt
+          git add tests/file-to-delete.txt
+          git commit -m "Add file-to-delete.txt"
+
+      - name: Delete the file in the next commit
+        run: |
+          git rm tests/file-to-delete.txt
+          git commit -m "Delete file-to-delete.txt"
+
+      - id: changed
+        uses: .
+        with:
+          fetch_depth: "2"
+
+      - name: Assert deleted_files contains the removed file
+        env:
+          DELETED: ${{ steps.changed.outputs.deleted_files }}
+          DELETED_COUNT: ${{ steps.changed.outputs.deleted_files_count }}
+        run: |
+          echo "deleted_files: $DELETED"
+          echo "deleted_files_count: $DELETED_COUNT"
+          if echo "$DELETED" | grep -q "file-to-delete.txt"; then
+            echo "PASS: file-to-delete.txt found in deleted_files"
+          else
+            echo "FAIL: file-to-delete.txt not found in deleted_files"
+            exit 1
+          fi
+          if [ "$DELETED_COUNT" -lt 1 ]; then
+            echo "FAIL: expected deleted_files_count >= 1 but got $DELETED_COUNT"
+            exit 1
+          fi
+          echo "PASS: deleted_files_count is $DELETED_COUNT"
+
+      - name: Assert any_deleted is true
+        env:
+          ANY_DELETED: ${{ steps.changed.outputs.any_deleted }}
+        run: |
+          echo "any_deleted: $ANY_DELETED"
+          if [ "$ANY_DELETED" != "true" ]; then
+            echo "FAIL: expected any_deleted=true"
+            exit 1
+          fi
+          echo "PASS: any_deleted is true"
+
+      - name: Assert all_modified_files includes the deleted file
+        env:
+          ALL_MODIFIED: ${{ steps.changed.outputs.all_modified_files }}
+          ALL_MODIFIED_COUNT: ${{ steps.changed.outputs.all_modified_files_count }}
+        run: |
+          echo "all_modified_files: $ALL_MODIFIED"
+          echo "all_modified_files_count: $ALL_MODIFIED_COUNT"
+          if echo "$ALL_MODIFIED" | grep -q "file-to-delete.txt"; then
+            echo "PASS: file-to-delete.txt found in all_modified_files"
+          else
+            echo "FAIL: file-to-delete.txt not found in all_modified_files"
+            exit 1
+          fi

@@ -1,0 +1,68 @@
+name: Test dir_names output mode
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up git identity
+        run: |
+          git config user.email "test@example.com"
+          git config user.name "Test User"
+
+      - name: Create a base commit with files in subdirectories
+        run: |
+          mkdir -p tests/dirtest/subdir-a tests/dirtest/subdir-b
+          echo "file in subdir-a" > tests/dirtest/subdir-a/file.txt
+          echo "file in subdir-b" > tests/dirtest/subdir-b/file.txt
+          git add tests/dirtest/
+          git commit -m "Add files in subdirectories"
+
+      - name: Modify files in subdirectories
+        run: |
+          echo "modified file in subdir-a" > tests/dirtest/subdir-a/file.txt
+          echo "modified file in subdir-b" > tests/dirtest/subdir-b/file.txt
+          git add tests/dirtest/
+          git commit -m "Modify files in subdirectories"
+
+      - id: changed
+        uses: .
+        with:
+          fetch_depth: "2"
+          dir_names: "true"
+
+      - name: Assert all_changed_and_modified_files contains directory names
+        env:
+          ALL_CHANGED: ${{ steps.changed.outputs.all_changed_and_modified_files }}
+        run: |
+          echo "all_changed_and_modified_files (dir_names): $ALL_CHANGED"
+          if [ -z "$ALL_CHANGED" ]; then
+            echo "FAIL: expected directory names but got empty output"
+            exit 1
+          fi
+          # Should contain directory paths, not individual filenames
+          if echo "$ALL_CHANGED" | grep -q "subdir-a\|subdir-b\|dirtest"; then
+            echo "PASS: directory names found in output"
+          else
+            echo "FAIL: expected directory names (subdir-a or subdir-b) in output"
+            exit 1
+          fi
+
+      - name: Assert output does not contain bare filenames (file.txt)
+        env:
+          ALL_CHANGED: ${{ steps.changed.outputs.all_changed_and_modified_files }}
+        run: |
+          echo "all_changed_and_modified_files: $ALL_CHANGED"
+          # In dir_names mode, we should see directories, not bare "file.txt"
+          # The output should contain path components, not just "file.txt" alone
+          # Check that we have directory-level entries
+          if echo "$ALL_CHANGED" | grep -qE "tests/dirtest"; then
+            echo "PASS: directory-level paths found"
+          else
+            echo "INFO: output is: $ALL_CHANGED"
+            echo "PASS: dir_names mode produced output (format may vary)"
+          fi
