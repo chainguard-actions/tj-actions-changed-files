@@ -1,0 +1,81 @@
+name: Test basic changed-files usage
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Get SHAs from existing git history
+        id: setup
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          # Get the last two commits
+          COMMITS=$(git log --format="%H" -n 2)
+          HEAD_SHA=$(echo "$COMMITS" | head -n 1)
+          BASE_SHA=$(echo "$COMMITS" | tail -n 1)
+          if [ -z "$HEAD_SHA" ] || [ -z "$BASE_SHA" ]; then
+            echo "ERROR: could not get two commits from git log"
+            exit 1
+          fi
+          if [ "$HEAD_SHA" = "$BASE_SHA" ]; then
+            echo "ERROR: repository has only one commit, cannot test diff"
+            exit 1
+          fi
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "Head SHA: $HEAD_SHA"
+          echo "Base SHA: $BASE_SHA"
+          echo "Changed files in range:"
+          git diff --name-only "$BASE_SHA" "$HEAD_SHA" || true
+
+      - id: changed
+        uses: .
+        with:
+          base_sha: ${{ steps.setup.outputs.base_sha }}
+          sha: ${{ steps.setup.outputs.head_sha }}
+          skip_initial_fetch: "true"
+        env:
+          GITHUB_REF_NAME: act-harness
+
+      - name: Assert outputs are set
+        env:
+          ALL_CHANGED: ${{ steps.changed.outputs.all_changed_files }}
+          ALL_CHANGED_COUNT: ${{ steps.changed.outputs.all_changed_files_count }}
+          ANY_CHANGED: ${{ steps.changed.outputs.any_changed }}
+          ADDED: ${{ steps.changed.outputs.added_files }}
+          MODIFIED: ${{ steps.changed.outputs.modified_files }}
+          ALL_MODIFIED: ${{ steps.changed.outputs.all_modified_files }}
+          ALL_MODIFIED_COUNT: ${{ steps.changed.outputs.all_modified_files_count }}
+        run: |
+          echo "all_changed_files: $ALL_CHANGED"
+          echo "all_changed_files_count: $ALL_CHANGED_COUNT"
+          echo "added_files: $ADDED"
+          echo "modified_files: $MODIFIED"
+          echo "all_modified_files: $ALL_MODIFIED"
+          echo "all_modified_files_count: $ALL_MODIFIED_COUNT"
+          echo "any_changed: $ANY_CHANGED"
+
+          # The count output should always be set (even if 0)
+          if [ -z "$ALL_CHANGED_COUNT" ]; then
+            echo "FAIL: all_changed_files_count is not set"
+            exit 1
+          fi
+          echo "PASS: all_changed_files_count is set: $ALL_CHANGED_COUNT"
+
+          # all_modified_files_count should also be set
+          if [ -z "$ALL_MODIFIED_COUNT" ]; then
+            echo "FAIL: all_modified_files_count is not set"
+            exit 1
+          fi
+          echo "PASS: all_modified_files_count is set: $ALL_MODIFIED_COUNT"
+
+          # any_changed should be a boolean string
+          if [ "$ANY_CHANGED" != "true" ] && [ "$ANY_CHANGED" != "false" ]; then
+            echo "FAIL: any_changed should be 'true' or 'false', got: $ANY_CHANGED"
+            exit 1
+          fi
+          echo "PASS: any_changed is a valid boolean: $ANY_CHANGED"

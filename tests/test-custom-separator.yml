@@ -1,0 +1,109 @@
+name: Test changed-files custom separator
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Get SHAs from existing git history
+        id: setup
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          # Get the last two commits
+          COMMITS=$(git log --format="%H" -n 2)
+          HEAD_SHA=$(echo "$COMMITS" | head -n 1)
+          BASE_SHA=$(echo "$COMMITS" | tail -n 1)
+          if [ -z "$HEAD_SHA" ] || [ -z "$BASE_SHA" ]; then
+            echo "ERROR: could not get two commits from git log"
+            exit 1
+          fi
+          if [ "$HEAD_SHA" = "$BASE_SHA" ]; then
+            echo "ERROR: repository has only one commit, cannot test diff"
+            exit 1
+          fi
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "Head SHA: $HEAD_SHA"
+          echo "Base SHA: $BASE_SHA"
+
+      - name: Run with comma separator
+        id: changed_comma
+        uses: .
+        with:
+          separator: ","
+          base_sha: ${{ steps.setup.outputs.base_sha }}
+          sha: ${{ steps.setup.outputs.head_sha }}
+          skip_initial_fetch: "true"
+        env:
+          GITHUB_REF_NAME: act-harness
+
+      - name: Assert comma separator output is valid
+        env:
+          ALL_CHANGED: ${{ steps.changed_comma.outputs.all_changed_files }}
+          ALL_CHANGED_COUNT: ${{ steps.changed_comma.outputs.all_changed_files_count }}
+        run: |
+          echo "all_changed_files (comma sep): $ALL_CHANGED"
+          echo "all_changed_files_count: $ALL_CHANGED_COUNT"
+
+          # Count should always be set
+          if [ -z "$ALL_CHANGED_COUNT" ]; then
+            echo "FAIL: all_changed_files_count is not set with comma separator"
+            exit 1
+          fi
+          echo "PASS: all_changed_files_count is set: $ALL_CHANGED_COUNT"
+
+          # If there are multiple files, they should be comma-separated (not space-separated)
+          if [ "$ALL_CHANGED_COUNT" -gt 1 ]; then
+            if echo "$ALL_CHANGED" | grep -q ","; then
+              echo "PASS: output contains comma separator between files"
+            else
+              echo "FAIL: expected comma separator between $ALL_CHANGED_COUNT files but got: $ALL_CHANGED"
+              exit 1
+            fi
+          else
+            echo "INFO: only $ALL_CHANGED_COUNT file(s) changed, separator not verifiable"
+          fi
+          echo "PASS: comma separator test completed"
+
+      - name: Run with pipe separator
+        id: changed_pipe
+        uses: .
+        with:
+          separator: "|"
+          base_sha: ${{ steps.setup.outputs.base_sha }}
+          sha: ${{ steps.setup.outputs.head_sha }}
+          skip_initial_fetch: "true"
+        env:
+          GITHUB_REF_NAME: act-harness
+
+      - name: Assert pipe separator output is valid
+        env:
+          ALL_CHANGED: ${{ steps.changed_pipe.outputs.all_changed_files }}
+          ALL_CHANGED_COUNT: ${{ steps.changed_pipe.outputs.all_changed_files_count }}
+        run: |
+          echo "all_changed_files (pipe sep): $ALL_CHANGED"
+          echo "all_changed_files_count: $ALL_CHANGED_COUNT"
+
+          # Count should always be set
+          if [ -z "$ALL_CHANGED_COUNT" ]; then
+            echo "FAIL: all_changed_files_count is not set with pipe separator"
+            exit 1
+          fi
+          echo "PASS: all_changed_files_count is set: $ALL_CHANGED_COUNT"
+
+          # If there are multiple files, they should be pipe-separated
+          if [ "$ALL_CHANGED_COUNT" -gt 1 ]; then
+            if echo "$ALL_CHANGED" | grep -qF "|"; then
+              echo "PASS: output contains pipe separator between files"
+            else
+              echo "FAIL: expected pipe separator between $ALL_CHANGED_COUNT files but got: $ALL_CHANGED"
+              exit 1
+            fi
+          else
+            echo "INFO: only $ALL_CHANGED_COUNT file(s) changed, separator not verifiable"
+          fi
+          echo "PASS: pipe separator test completed"

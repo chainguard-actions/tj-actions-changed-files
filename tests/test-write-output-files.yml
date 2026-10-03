@@ -1,0 +1,87 @@
+name: Test changed-files write_output_files feature
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Get SHAs from existing git history
+        id: setup
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          # Get the last two commits
+          COMMITS=$(git log --format="%H" -n 2)
+          HEAD_SHA=$(echo "$COMMITS" | head -n 1)
+          BASE_SHA=$(echo "$COMMITS" | tail -n 1)
+          if [ -z "$HEAD_SHA" ] || [ -z "$BASE_SHA" ]; then
+            echo "ERROR: could not get two commits from git log"
+            exit 1
+          fi
+          if [ "$HEAD_SHA" = "$BASE_SHA" ]; then
+            echo "ERROR: repository has only one commit, cannot test diff"
+            exit 1
+          fi
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "Head SHA: $HEAD_SHA"
+          echo "Base SHA: $BASE_SHA"
+
+      - id: changed
+        uses: .
+        with:
+          write_output_files: "true"
+          output_dir: ".github/outputs"
+          base_sha: ${{ steps.setup.outputs.base_sha }}
+          sha: ${{ steps.setup.outputs.head_sha }}
+          skip_initial_fetch: "true"
+        env:
+          GITHUB_REF_NAME: act-harness
+
+      - name: Assert output files were created
+        env:
+          ALL_CHANGED: ${{ steps.changed.outputs.all_changed_files }}
+          ALL_CHANGED_COUNT: ${{ steps.changed.outputs.all_changed_files_count }}
+        run: |
+          echo "all_changed_files: $ALL_CHANGED"
+          echo "all_changed_files_count: $ALL_CHANGED_COUNT"
+
+          # Count output should be set
+          if [ -z "$ALL_CHANGED_COUNT" ]; then
+            echo "FAIL: all_changed_files_count output is not set"
+            exit 1
+          fi
+          echo "PASS: all_changed_files_count is set: $ALL_CHANGED_COUNT"
+
+          # Check that the output directory was created
+          if [ ! -d "$GITHUB_WORKSPACE/.github/outputs" ]; then
+            echo "FAIL: output directory .github/outputs was not created"
+            exit 1
+          fi
+          echo "PASS: output directory .github/outputs exists"
+
+          # Check that at least one output file was created
+          OUTPUT_FILES=$(ls "$GITHUB_WORKSPACE/.github/outputs/" 2>/dev/null | wc -l)
+          echo "Number of output files: $OUTPUT_FILES"
+          if [ "$OUTPUT_FILES" -eq 0 ]; then
+            echo "FAIL: no output files were created in .github/outputs"
+            exit 1
+          fi
+          echo "PASS: output files were created ($OUTPUT_FILES files)"
+
+          # List the output files for debugging
+          echo "Output files:"
+          ls -la "$GITHUB_WORKSPACE/.github/outputs/"
+
+          # Check that all_changed_files output file exists
+          if [ -f "$GITHUB_WORKSPACE/.github/outputs/all_changed_files.txt" ]; then
+            echo "PASS: all_changed_files.txt exists"
+            echo "Content:"
+            cat "$GITHUB_WORKSPACE/.github/outputs/all_changed_files.txt"
+          else
+            echo "INFO: all_changed_files.txt not found, listing available files:"
+            ls "$GITHUB_WORKSPACE/.github/outputs/"
+          fi

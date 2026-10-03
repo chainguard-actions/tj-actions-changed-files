@@ -1,0 +1,108 @@
+name: Test changed-files with file pattern filter
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Get SHAs from existing git history
+        id: setup
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          # Get the last two commits
+          COMMITS=$(git log --format="%H" -n 2)
+          HEAD_SHA=$(echo "$COMMITS" | head -n 1)
+          BASE_SHA=$(echo "$COMMITS" | tail -n 1)
+          if [ -z "$HEAD_SHA" ] || [ -z "$BASE_SHA" ]; then
+            echo "ERROR: could not get two commits from git log"
+            exit 1
+          fi
+          if [ "$HEAD_SHA" = "$BASE_SHA" ]; then
+            echo "ERROR: repository has only one commit, cannot test diff"
+            exit 1
+          fi
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "Head SHA: $HEAD_SHA"
+          echo "Base SHA: $BASE_SHA"
+          echo "Changed files in range:"
+          git diff --name-only "$BASE_SHA" "$HEAD_SHA" || true
+
+      - name: Check changed files matching ** pattern (all files)
+        id: all_changed
+        uses: .
+        with:
+          files: "**"
+          base_sha: ${{ steps.setup.outputs.base_sha }}
+          sha: ${{ steps.setup.outputs.head_sha }}
+          skip_initial_fetch: "true"
+        env:
+          GITHUB_REF_NAME: act-harness
+
+      - name: Assert any_changed and only_changed outputs are valid booleans
+        env:
+          ANY_CHANGED: ${{ steps.all_changed.outputs.any_changed }}
+          ONLY_CHANGED: ${{ steps.all_changed.outputs.only_changed }}
+          ALL_CHANGED: ${{ steps.all_changed.outputs.all_changed_files }}
+          ALL_CHANGED_COUNT: ${{ steps.all_changed.outputs.all_changed_files_count }}
+        run: |
+          echo "any_changed (**): $ANY_CHANGED"
+          echo "only_changed (**): $ONLY_CHANGED"
+          echo "all_changed_files (**): $ALL_CHANGED"
+          echo "all_changed_files_count: $ALL_CHANGED_COUNT"
+
+          # any_changed should be a valid boolean
+          if [ "$ANY_CHANGED" != "true" ] && [ "$ANY_CHANGED" != "false" ]; then
+            echo "FAIL: any_changed should be 'true' or 'false', got: $ANY_CHANGED"
+            exit 1
+          fi
+          echo "PASS: any_changed is a valid boolean: $ANY_CHANGED"
+
+          # only_changed should be a valid boolean
+          if [ "$ONLY_CHANGED" != "true" ] && [ "$ONLY_CHANGED" != "false" ]; then
+            echo "FAIL: only_changed should be 'true' or 'false', got: $ONLY_CHANGED"
+            exit 1
+          fi
+          echo "PASS: only_changed is a valid boolean: $ONLY_CHANGED"
+
+          # Count should be set
+          if [ -z "$ALL_CHANGED_COUNT" ]; then
+            echo "FAIL: all_changed_files_count is not set"
+            exit 1
+          fi
+          echo "PASS: all_changed_files_count is set: $ALL_CHANGED_COUNT"
+
+      - name: Check changed files matching *.xyz pattern (no such files)
+        id: xyz_changed
+        uses: .
+        with:
+          files: "*.xyz"
+          base_sha: ${{ steps.setup.outputs.base_sha }}
+          sha: ${{ steps.setup.outputs.head_sha }}
+          skip_initial_fetch: "true"
+        env:
+          GITHUB_REF_NAME: act-harness
+
+      - name: Assert any_changed is false for *.xyz pattern
+        env:
+          ANY_CHANGED: ${{ steps.xyz_changed.outputs.any_changed }}
+          ALL_CHANGED_COUNT: ${{ steps.xyz_changed.outputs.all_changed_files_count }}
+        run: |
+          echo "any_changed (*.xyz): $ANY_CHANGED"
+          echo "all_changed_files_count (*.xyz): $ALL_CHANGED_COUNT"
+
+          if [ "$ANY_CHANGED" != "false" ]; then
+            echo "FAIL: expected any_changed=false for *.xyz pattern (no .xyz files exist)"
+            exit 1
+          fi
+          echo "PASS: any_changed=false for *.xyz"
+
+          if [ "$ALL_CHANGED_COUNT" != "0" ]; then
+            echo "FAIL: expected all_changed_files_count=0 for *.xyz pattern, got: $ALL_CHANGED_COUNT"
+            exit 1
+          fi
+          echo "PASS: all_changed_files_count=0 for *.xyz"

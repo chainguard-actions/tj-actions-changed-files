@@ -1,0 +1,91 @@
+name: Test changed-files JSON output format
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Get SHAs from existing git history
+        id: setup
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          # Get the last two commits
+          COMMITS=$(git log --format="%H" -n 2)
+          HEAD_SHA=$(echo "$COMMITS" | head -n 1)
+          BASE_SHA=$(echo "$COMMITS" | tail -n 1)
+          if [ -z "$HEAD_SHA" ] || [ -z "$BASE_SHA" ]; then
+            echo "ERROR: could not get two commits from git log"
+            exit 1
+          fi
+          if [ "$HEAD_SHA" = "$BASE_SHA" ]; then
+            echo "ERROR: repository has only one commit, cannot test diff"
+            exit 1
+          fi
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "Head SHA: $HEAD_SHA"
+          echo "Base SHA: $BASE_SHA"
+
+      - id: changed
+        uses: .
+        with:
+          json: "true"
+          escape_json: "false"
+          base_sha: ${{ steps.setup.outputs.base_sha }}
+          sha: ${{ steps.setup.outputs.head_sha }}
+          skip_initial_fetch: "true"
+        env:
+          GITHUB_REF_NAME: act-harness
+
+      - name: Assert JSON output is valid JSON array
+        env:
+          ALL_CHANGED: ${{ steps.changed.outputs.all_changed_files }}
+          ADDED: ${{ steps.changed.outputs.added_files }}
+          MODIFIED: ${{ steps.changed.outputs.modified_files }}
+          ALL_MODIFIED: ${{ steps.changed.outputs.all_modified_files }}
+          DELETED: ${{ steps.changed.outputs.deleted_files }}
+        run: |
+          echo "all_changed_files (JSON): $ALL_CHANGED"
+          echo "added_files (JSON): $ADDED"
+          echo "modified_files (JSON): $MODIFIED"
+          echo "all_modified_files (JSON): $ALL_MODIFIED"
+          echo "deleted_files (JSON): $DELETED"
+
+          # Verify all_changed_files is valid JSON array
+          if ! echo "$ALL_CHANGED" | python3 -c "import sys, json; data=json.load(sys.stdin); assert isinstance(data, list), 'not a list'" 2>/dev/null; then
+            echo "FAIL: all_changed_files is not valid JSON array: $ALL_CHANGED"
+            exit 1
+          fi
+          echo "PASS: all_changed_files is valid JSON array"
+
+          # Verify added_files is also valid JSON array
+          if ! echo "$ADDED" | python3 -c "import sys, json; data=json.load(sys.stdin); assert isinstance(data, list), 'not a list'" 2>/dev/null; then
+            echo "FAIL: added_files is not valid JSON array: $ADDED"
+            exit 1
+          fi
+          echo "PASS: added_files is valid JSON array"
+
+          # Verify modified_files is also valid JSON array
+          if ! echo "$MODIFIED" | python3 -c "import sys, json; data=json.load(sys.stdin); assert isinstance(data, list), 'not a list'" 2>/dev/null; then
+            echo "FAIL: modified_files is not valid JSON array: $MODIFIED"
+            exit 1
+          fi
+          echo "PASS: modified_files is valid JSON array"
+
+          # Verify all_modified_files is also valid JSON array
+          if ! echo "$ALL_MODIFIED" | python3 -c "import sys, json; data=json.load(sys.stdin); assert isinstance(data, list), 'not a list'" 2>/dev/null; then
+            echo "FAIL: all_modified_files is not valid JSON array: $ALL_MODIFIED"
+            exit 1
+          fi
+          echo "PASS: all_modified_files is valid JSON array"
+
+          # Verify deleted_files is also valid JSON array
+          if ! echo "$DELETED" | python3 -c "import sys, json; data=json.load(sys.stdin); assert isinstance(data, list), 'not a list'" 2>/dev/null; then
+            echo "FAIL: deleted_files is not valid JSON array: $DELETED"
+            exit 1
+          fi
+          echo "PASS: deleted_files is valid JSON array"

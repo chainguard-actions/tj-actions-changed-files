@@ -1,0 +1,127 @@
+name: Test changed-files files_ignore pattern
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Get SHAs from existing git history
+        id: setup
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          # Get the last two commits
+          COMMITS=$(git log --format="%H" -n 2)
+          HEAD_SHA=$(echo "$COMMITS" | head -n 1)
+          BASE_SHA=$(echo "$COMMITS" | tail -n 1)
+          if [ -z "$HEAD_SHA" ] || [ -z "$BASE_SHA" ]; then
+            echo "ERROR: could not get two commits from git log"
+            exit 1
+          fi
+          if [ "$HEAD_SHA" = "$BASE_SHA" ]; then
+            echo "ERROR: repository has only one commit, cannot test diff"
+            exit 1
+          fi
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "Head SHA: $HEAD_SHA"
+          echo "Base SHA: $BASE_SHA"
+          echo "Changed files in range:"
+          git diff --name-only "$BASE_SHA" "$HEAD_SHA" || true
+
+      - name: Run without files_ignore (baseline)
+        id: changed_baseline
+        uses: .
+        with:
+          base_sha: ${{ steps.setup.outputs.base_sha }}
+          sha: ${{ steps.setup.outputs.head_sha }}
+          skip_initial_fetch: "true"
+        env:
+          GITHUB_REF_NAME: act-harness
+
+      - name: Run with files_ignore for *.xyz files (no such files exist)
+        id: changed_ignore_xyz
+        uses: .
+        with:
+          files_ignore: "*.xyz"
+          base_sha: ${{ steps.setup.outputs.base_sha }}
+          sha: ${{ steps.setup.outputs.head_sha }}
+          skip_initial_fetch: "true"
+        env:
+          GITHUB_REF_NAME: act-harness
+
+      - name: Assert files_ignore outputs are valid
+        env:
+          BASELINE_COUNT: ${{ steps.changed_baseline.outputs.all_changed_files_count }}
+          IGNORE_COUNT: ${{ steps.changed_ignore_xyz.outputs.all_changed_files_count }}
+          BASELINE_ALL: ${{ steps.changed_baseline.outputs.all_changed_files }}
+          IGNORE_ALL: ${{ steps.changed_ignore_xyz.outputs.all_changed_files }}
+        run: |
+          echo "baseline all_changed_files_count: $BASELINE_COUNT"
+          echo "ignore_xyz all_changed_files_count: $IGNORE_COUNT"
+          echo "baseline all_changed_files: $BASELINE_ALL"
+          echo "ignore_xyz all_changed_files: $IGNORE_ALL"
+
+          # Both counts should be set
+          if [ -z "$BASELINE_COUNT" ]; then
+            echo "FAIL: baseline all_changed_files_count is not set"
+            exit 1
+          fi
+          if [ -z "$IGNORE_COUNT" ]; then
+            echo "FAIL: ignore_xyz all_changed_files_count is not set"
+            exit 1
+          fi
+          echo "PASS: both counts are set (baseline=$BASELINE_COUNT, ignore_xyz=$IGNORE_COUNT)"
+
+          # Ignoring *.xyz (which don't exist in this repo) should give same count as baseline
+          if [ "$BASELINE_COUNT" != "$IGNORE_COUNT" ]; then
+            echo "FAIL: ignoring non-existent *.xyz files should not change the count"
+            echo "  baseline=$BASELINE_COUNT, ignore_xyz=$IGNORE_COUNT"
+            exit 1
+          fi
+          echo "PASS: ignoring non-existent *.xyz files gives same count as baseline"
+
+      - name: Run with files_ignore for action.yml
+        id: changed_ignore_yml
+        uses: .
+        with:
+          files_ignore: "action.yml"
+          base_sha: ${{ steps.setup.outputs.base_sha }}
+          sha: ${{ steps.setup.outputs.head_sha }}
+          skip_initial_fetch: "true"
+        env:
+          GITHUB_REF_NAME: act-harness
+
+      - name: Assert action.yml is not in output when ignored
+        env:
+          IGNORE_YML_COUNT: ${{ steps.changed_ignore_yml.outputs.all_changed_files_count }}
+          IGNORE_YML_ALL: ${{ steps.changed_ignore_yml.outputs.all_changed_files }}
+          BASELINE_COUNT: ${{ steps.changed_baseline.outputs.all_changed_files_count }}
+        run: |
+          echo "baseline count: $BASELINE_COUNT"
+          echo "ignore action.yml count: $IGNORE_YML_COUNT"
+          echo "ignore action.yml files: $IGNORE_YML_ALL"
+
+          # Count should be set
+          if [ -z "$IGNORE_YML_COUNT" ]; then
+            echo "FAIL: all_changed_files_count is not set when ignoring action.yml"
+            exit 1
+          fi
+          echo "PASS: all_changed_files_count is set: $IGNORE_YML_COUNT"
+
+          # Ignoring action.yml should give count <= baseline
+          if [ "$IGNORE_YML_COUNT" -gt "$BASELINE_COUNT" ]; then
+            echo "FAIL: ignoring files should not increase the count"
+            exit 1
+          fi
+          echo "PASS: ignoring action.yml gives count ($IGNORE_YML_COUNT) <= baseline ($BASELINE_COUNT)"
+
+          # action.yml should not appear in the output when ignored
+          if echo "$IGNORE_YML_ALL" | grep -qE "(^|[ ,|])action\.yml([ ,|]|$)"; then
+            echo "FAIL: action.yml should be ignored but appears in output: $IGNORE_YML_ALL"
+            exit 1
+          fi
+          echo "PASS: action.yml is not in the output when ignored"

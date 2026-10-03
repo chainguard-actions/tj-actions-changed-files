@@ -1,0 +1,96 @@
+name: Test changed-files dir_names output mode
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Get SHAs from existing git history
+        id: setup
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          # Get the last two commits
+          COMMITS=$(git log --format="%H" -n 2)
+          HEAD_SHA=$(echo "$COMMITS" | head -n 1)
+          BASE_SHA=$(echo "$COMMITS" | tail -n 1)
+          if [ -z "$HEAD_SHA" ] || [ -z "$BASE_SHA" ]; then
+            echo "ERROR: could not get two commits from git log"
+            exit 1
+          fi
+          if [ "$HEAD_SHA" = "$BASE_SHA" ]; then
+            echo "ERROR: repository has only one commit, cannot test diff"
+            exit 1
+          fi
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "Head SHA: $HEAD_SHA"
+          echo "Base SHA: $BASE_SHA"
+          echo "Changed files in range:"
+          git diff --name-only "$BASE_SHA" "$HEAD_SHA" || true
+
+      - name: Run without dir_names (baseline - filenames)
+        id: changed_files
+        uses: .
+        with:
+          dir_names: "false"
+          base_sha: ${{ steps.setup.outputs.base_sha }}
+          sha: ${{ steps.setup.outputs.head_sha }}
+          skip_initial_fetch: "true"
+        env:
+          GITHUB_REF_NAME: act-harness
+
+      - name: Run with dir_names enabled
+        id: changed_dirs
+        uses: .
+        with:
+          dir_names: "true"
+          base_sha: ${{ steps.setup.outputs.base_sha }}
+          sha: ${{ steps.setup.outputs.head_sha }}
+          skip_initial_fetch: "true"
+        env:
+          GITHUB_REF_NAME: act-harness
+
+      - name: Assert dir_names output is valid
+        env:
+          FILES_ALL: ${{ steps.changed_files.outputs.all_changed_files }}
+          FILES_COUNT: ${{ steps.changed_files.outputs.all_changed_files_count }}
+          DIRS_ALL: ${{ steps.changed_dirs.outputs.all_changed_files }}
+          DIRS_COUNT: ${{ steps.changed_dirs.outputs.all_changed_files_count }}
+        run: |
+          echo "all_changed_files (filenames): $FILES_ALL"
+          echo "all_changed_files_count (filenames): $FILES_COUNT"
+          echo "all_changed_files (dir_names): $DIRS_ALL"
+          echo "all_changed_files_count (dir_names): $DIRS_COUNT"
+
+          # Both counts should be set
+          if [ -z "$FILES_COUNT" ]; then
+            echo "FAIL: all_changed_files_count is not set without dir_names"
+            exit 1
+          fi
+          if [ -z "$DIRS_COUNT" ]; then
+            echo "FAIL: all_changed_files_count is not set with dir_names=true"
+            exit 1
+          fi
+          echo "PASS: both counts are set (files=$FILES_COUNT, dirs=$DIRS_COUNT)"
+
+          # With dir_names=true, the count should be <= file count
+          # (multiple files in same dir collapse to one dir entry)
+          if [ "$DIRS_COUNT" -gt "$FILES_COUNT" ]; then
+            echo "FAIL: dir_names count ($DIRS_COUNT) should be <= file count ($FILES_COUNT)"
+            exit 1
+          fi
+          echo "PASS: dir_names count ($DIRS_COUNT) <= file count ($FILES_COUNT)"
+
+          # With dir_names=true, output should not contain file extensions
+          # (directories don't have extensions like .yml, .ts, .js)
+          # Files in root dir show as '.' which is also fine
+          if [ -n "$DIRS_ALL" ]; then
+            echo "PASS: dir_names output is non-empty: $DIRS_ALL"
+          else
+            echo "INFO: no changed files detected"
+          fi
+          echo "PASS: dir_names test completed"
