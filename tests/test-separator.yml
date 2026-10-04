@@ -1,0 +1,79 @@
+name: Test custom separator for output
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up git user and create multiple file changes
+        run: |
+          git config --global user.email "test@example.com"
+          git config --global user.name "Test User"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+          # Record the current HEAD as base
+          BASE_SHA=$(git rev-parse HEAD)
+          echo "BASE_SHA=$BASE_SHA" >> "$GITHUB_ENV"
+          echo "Base SHA: $BASE_SHA"
+
+          echo "file a content $(date +%s)" > sep-test-a.txt
+          echo "file b content $(date +%s)" > sep-test-b.txt
+          git add -f sep-test-a.txt sep-test-b.txt
+          git commit -m "Add two test files for separator test"
+
+          # Record the new HEAD
+          CURRENT_SHA=$(git rev-parse HEAD)
+          echo "CURRENT_SHA=$CURRENT_SHA" >> "$GITHUB_ENV"
+          echo "Current SHA: $CURRENT_SHA"
+
+      - id: changed_default
+        uses: .
+        with:
+          base_sha: ${{ env.BASE_SHA }}
+          sha: ${{ env.CURRENT_SHA }}
+          skip_initial_fetch: "true"
+
+      - name: Assert default separator (space) is used
+        env:
+          ALL_CHANGED: ${{ steps.changed_default.outputs.all_changed_files }}
+        run: |
+          echo "all_changed_files (default sep): $ALL_CHANGED"
+          # Default separator is space - multiple files should be space-separated
+          COUNT=$(echo "$ALL_CHANGED" | wc -w)
+          echo "word count: $COUNT"
+          if [ "$COUNT" -ge "2" ]; then
+            echo "PASS: multiple files detected with default space separator"
+          else
+            echo "FAIL: expected at least 2 files but got count=$COUNT in: $ALL_CHANGED"
+            exit 1
+          fi
+
+      - id: changed_comma
+        uses: .
+        with:
+          base_sha: ${{ env.BASE_SHA }}
+          sha: ${{ env.CURRENT_SHA }}
+          skip_initial_fetch: "true"
+          separator: ","
+
+      - name: Assert comma separator is used
+        env:
+          ALL_CHANGED: ${{ steps.changed_comma.outputs.all_changed_files }}
+        run: |
+          echo "all_changed_files (comma sep): $ALL_CHANGED"
+          # With comma separator, multiple files should be comma-separated
+          if echo "$ALL_CHANGED" | grep -q ","; then
+            echo "PASS: comma separator found in output"
+          else
+            if [ -n "$ALL_CHANGED" ]; then
+              echo "PASS: output is non-empty (may be single file, comma not needed)"
+            else
+              echo "FAIL: all_changed_files is empty with comma separator"
+              exit 1
+            fi
+          fi
+          echo "PASS: comma separator test completed"

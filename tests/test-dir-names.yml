@@ -1,0 +1,74 @@
+name: Test dir_names output mode
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up git user and create file changes in subdirectory
+        run: |
+          git config --global user.email "test@example.com"
+          git config --global user.name "Test User"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+          # Record the current HEAD as base
+          BASE_SHA=$(git rev-parse HEAD)
+          echo "BASE_SHA=$BASE_SHA" >> "$GITHUB_ENV"
+          echo "Base SHA: $BASE_SHA"
+
+          mkdir -p test-subdir/nested
+          echo "subdir content $(date +%s)" > test-subdir/file1.txt
+          echo "nested content $(date +%s)" > test-subdir/nested/file2.txt
+          git add -f test-subdir/
+          git commit -m "Add test files in subdirectory for dir_names test"
+
+          # Record the new HEAD
+          CURRENT_SHA=$(git rev-parse HEAD)
+          echo "CURRENT_SHA=$CURRENT_SHA" >> "$GITHUB_ENV"
+          echo "Current SHA: $CURRENT_SHA"
+
+      - id: changed
+        uses: .
+        with:
+          base_sha: ${{ env.BASE_SHA }}
+          sha: ${{ env.CURRENT_SHA }}
+          skip_initial_fetch: "true"
+          dir_names: "true"
+          dir_names_max_depth: "1"
+
+      - name: Assert directory names are returned instead of file names
+        env:
+          ALL_CHANGED: ${{ steps.changed.outputs.all_changed_files }}
+          ALL_MODIFIED: ${{ steps.changed.outputs.all_modified_files }}
+        run: |
+          echo "all_changed_files (dir_names): $ALL_CHANGED"
+          echo "all_modified_files (dir_names): $ALL_MODIFIED"
+
+          # With dir_names=true, we should see directory names not file names
+          if echo "$ALL_CHANGED" | grep -q "file1.txt"; then
+            echo "FAIL: file1.txt should not appear in dir_names mode output"
+            exit 1
+          fi
+          if echo "$ALL_CHANGED" | grep -q "file2.txt"; then
+            echo "FAIL: file2.txt should not appear in dir_names mode output"
+            exit 1
+          fi
+
+          # The directory test-subdir should appear
+          if echo "$ALL_CHANGED" | grep -q "test-subdir"; then
+            echo "PASS: test-subdir directory detected in dir_names mode"
+          else
+            echo "FAIL: expected test-subdir in all_changed_files but got: $ALL_CHANGED"
+            exit 1
+          fi
+
+          # With max_depth=1, nested should NOT appear separately
+          if echo "$ALL_CHANGED" | grep -q "test-subdir/nested"; then
+            echo "FAIL: nested subdir should not appear with max_depth=1"
+            exit 1
+          fi
+          echo "PASS: dir_names mode with max_depth=1 works correctly"

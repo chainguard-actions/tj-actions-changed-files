@@ -1,0 +1,70 @@
+name: Test JSON output format
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up git user and create file changes
+        run: |
+          git config --global user.email "test@example.com"
+          git config --global user.name "Test User"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+          # Record the current HEAD as base
+          BASE_SHA=$(git rev-parse HEAD)
+          echo "BASE_SHA=$BASE_SHA" >> "$GITHUB_ENV"
+          echo "Base SHA: $BASE_SHA"
+
+          echo "json test content $(date +%s)" > test-json-file.txt
+          git add -f test-json-file.txt
+          git commit -m "Add test file for JSON output test"
+
+          # Record the new HEAD
+          CURRENT_SHA=$(git rev-parse HEAD)
+          echo "CURRENT_SHA=$CURRENT_SHA" >> "$GITHUB_ENV"
+          echo "Current SHA: $CURRENT_SHA"
+
+      - id: changed
+        uses: .
+        with:
+          base_sha: ${{ env.BASE_SHA }}
+          sha: ${{ env.CURRENT_SHA }}
+          skip_initial_fetch: "true"
+          json: "true"
+          escape_json: "false"
+
+      - name: Assert JSON output is valid
+        env:
+          ALL_CHANGED: ${{ steps.changed.outputs.all_changed_files }}
+          ADDED_FILES: ${{ steps.changed.outputs.added_files }}
+        run: |
+          echo "all_changed_files (JSON): $ALL_CHANGED"
+          echo "added_files (JSON): $ADDED_FILES"
+
+          # Verify the output is valid JSON (array format)
+          if echo "$ALL_CHANGED" | python3 -c "import sys, json; data=json.load(sys.stdin); assert isinstance(data, list)" 2>/dev/null; then
+            echo "PASS: all_changed_files is valid JSON array"
+          else
+            echo "FAIL: all_changed_files is not valid JSON: $ALL_CHANGED"
+            exit 1
+          fi
+
+          if echo "$ADDED_FILES" | python3 -c "import sys, json; data=json.load(sys.stdin); assert isinstance(data, list)" 2>/dev/null; then
+            echo "PASS: added_files is valid JSON array"
+          else
+            echo "FAIL: added_files is not valid JSON: $ADDED_FILES"
+            exit 1
+          fi
+
+          # Verify the newly added file appears in the JSON output
+          if echo "$ADDED_FILES" | python3 -c "import sys, json; data=json.load(sys.stdin); assert any('test-json-file.txt' in f for f in data)" 2>/dev/null; then
+            echo "PASS: test-json-file.txt found in JSON added_files"
+          else
+            echo "FAIL: test-json-file.txt not found in JSON added_files: $ADDED_FILES"
+            exit 1
+          fi

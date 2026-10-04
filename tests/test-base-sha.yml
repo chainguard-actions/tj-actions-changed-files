@@ -1,0 +1,68 @@
+name: Test base_sha - compare against specific commit
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up git user and create multiple commits
+        run: |
+          git config --global user.email "test@example.com"
+          git config --global user.name "Test User"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+          # First commit - create file A
+          echo "file A content $(date +%s)" > base-sha-file-a.txt
+          git add -f base-sha-file-a.txt
+          git commit -m "Add file A (base commit)"
+
+          # Record the SHA after first commit
+          BASE_SHA=$(git rev-parse HEAD)
+          echo "BASE_SHA=$BASE_SHA" >> "$GITHUB_ENV"
+          echo "Recorded base SHA: $BASE_SHA"
+
+          # Second commit - create file B
+          echo "file B content $(date +%s)" > base-sha-file-b.txt
+          git add -f base-sha-file-b.txt
+          git commit -m "Add file B (head commit)"
+
+          # Record the current HEAD SHA
+          CURRENT_SHA=$(git rev-parse HEAD)
+          echo "CURRENT_SHA=$CURRENT_SHA" >> "$GITHUB_ENV"
+          echo "Current SHA: $CURRENT_SHA"
+
+      - id: changed
+        uses: .
+        with:
+          base_sha: ${{ env.BASE_SHA }}
+          sha: ${{ env.CURRENT_SHA }}
+          skip_initial_fetch: "true"
+
+      - name: Assert only file B is detected (changes since base SHA)
+        env:
+          ALL_CHANGED: ${{ steps.changed.outputs.all_changed_files }}
+          ADDED_FILES: ${{ steps.changed.outputs.added_files }}
+          ADDED_COUNT: ${{ steps.changed.outputs.added_files_count }}
+        run: |
+          echo "all_changed_files: $ALL_CHANGED"
+          echo "added_files: $ADDED_FILES"
+          echo "added_files_count: $ADDED_COUNT"
+
+          # File B should be detected (added after base SHA)
+          if echo "$ADDED_FILES" | grep -q "base-sha-file-b.txt"; then
+            echo "PASS: base-sha-file-b.txt detected as added after base SHA"
+          else
+            echo "FAIL: expected base-sha-file-b.txt in added_files but got: $ADDED_FILES"
+            exit 1
+          fi
+
+          # File A should NOT be detected (it was added at the base SHA, not after)
+          if echo "$ADDED_FILES" | grep -q "base-sha-file-a.txt"; then
+            echo "FAIL: base-sha-file-a.txt should not appear (it was added at base SHA)"
+            exit 1
+          fi
+          echo "PASS: base_sha correctly limits detection to changes after the specified commit"

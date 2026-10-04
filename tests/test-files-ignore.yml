@@ -1,0 +1,65 @@
+name: Test files_ignore - exclude files from detection
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up git user and create file changes
+        run: |
+          git config --global user.email "test@example.com"
+          git config --global user.name "Test User"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+          # Record the current HEAD as base
+          BASE_SHA=$(git rev-parse HEAD)
+          echo "BASE_SHA=$BASE_SHA" >> "$GITHUB_ENV"
+          echo "Base SHA: $BASE_SHA"
+
+          echo "important content $(date +%s)" > important-file.go
+          echo "ignored content $(date +%s)" > ignored-file.log
+          git add -f important-file.go ignored-file.log
+          git commit -m "Add test files for files_ignore test"
+
+          # Record the new HEAD
+          CURRENT_SHA=$(git rev-parse HEAD)
+          echo "CURRENT_SHA=$CURRENT_SHA" >> "$GITHUB_ENV"
+          echo "Current SHA: $CURRENT_SHA"
+
+      - id: changed
+        uses: .
+        with:
+          base_sha: ${{ env.BASE_SHA }}
+          sha: ${{ env.CURRENT_SHA }}
+          skip_initial_fetch: "true"
+          files_ignore: "*.log"
+
+      - name: Assert ignored files are excluded
+        env:
+          ALL_CHANGED: ${{ steps.changed.outputs.all_changed_files }}
+          ALL_MODIFIED: ${{ steps.changed.outputs.all_modified_files }}
+          ANY_CHANGED: ${{ steps.changed.outputs.any_changed }}
+        run: |
+          echo "all_changed_files: $ALL_CHANGED"
+          echo "all_modified_files: $ALL_MODIFIED"
+          echo "any_changed: $ANY_CHANGED"
+
+          # The .log file should NOT appear in the output
+          if echo "$ALL_CHANGED" | grep -q "ignored-file.log"; then
+            echo "FAIL: ignored-file.log should be excluded by files_ignore=*.log"
+            exit 1
+          fi
+          echo "PASS: .log file correctly excluded by files_ignore"
+
+          # The .go file should appear in the output
+          if echo "$ALL_CHANGED" | grep -q "important-file.go"; then
+            echo "PASS: important-file.go is present in all_changed_files"
+          else
+            echo "FAIL: expected important-file.go in all_changed_files but got: $ALL_CHANGED"
+            exit 1
+          fi
+          echo "PASS: files_ignore correctly excludes *.log files"
