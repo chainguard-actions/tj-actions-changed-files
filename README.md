@@ -9,6 +9,7 @@ Hardened by [Chainguard](https://www.chainguard.dev) from the upstream action at
 | Version | Tag | Upstream commit |
 |---------|-----|-----------------|
 | v42.1.0 | [`v42.1.0`](https://github.com/chainguard-actions/tj-actions-changed-files/tree/v42.1.0) | [`aa08304`](https://github.com/tj-actions/changed-files/commit/aa08304bd477b800d468db44fe10f6c61f7f7b11) |
+| v45.0.2 | [`v45.0.2`](https://github.com/chainguard-actions/tj-actions-changed-files/tree/v45.0.2) | [`48d8f15`](https://github.com/tj-actions/changed-files/commit/48d8f15b2aaa3d255ca5af3eba4870f807ce6b3c) |
 | v46.0.1 | [`v46.0.1`](https://github.com/chainguard-actions/tj-actions-changed-files/tree/v46.0.1) | [`2f7c5bf`](https://github.com/tj-actions/changed-files/commit/2f7c5bfce28377bc069a65ba478de0a74aa0ca32) |
 | v46.0.5 | [`v46.0.5`](https://github.com/chainguard-actions/tj-actions-changed-files/tree/v46.0.5) | [`ed68ef8`](https://github.com/tj-actions/changed-files/commit/ed68ef82c095e0d48ec87eccea555d944a631a4c) |
 | v47 | [`v47`](https://github.com/chainguard-actions/tj-actions-changed-files/tree/v47) | [`24d32ff`](https://github.com/tj-actions/changed-files/commit/24d32ffd492484c1d75e0c0b894501ddb9d30d62) |
