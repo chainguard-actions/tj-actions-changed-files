@@ -1,0 +1,88 @@
+name: Test write_output_files feature
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Configure git safe directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Get last two commit SHAs
+        id: commits
+        run: |
+          COMMITS=$(git log --format=%H -n 2)
+          SHA=$(echo "$COMMITS" | head -1)
+          BASE_SHA=$(echo "$COMMITS" | tail -1)
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "Current SHA: $SHA"
+          echo "Base SHA: $BASE_SHA"
+
+      - id: changed-files
+        uses: .
+        with:
+          write_output_files: "true"
+          output_dir: ".github/outputs"
+          base_sha: ${{ steps.commits.outputs.base_sha }}
+          sha: ${{ steps.commits.outputs.sha }}
+          skip_initial_fetch: "true"
+          exclude_submodules: "true"
+
+      - name: Assert output files were written
+        run: |
+          echo "Checking for output files in .github/outputs/"
+          ls -la .github/outputs/ || true
+          if [ ! -d ".github/outputs" ]; then
+            echo "FAIL: .github/outputs directory was not created"
+            exit 1
+          fi
+          FILE_COUNT=$(ls .github/outputs/*.txt 2>/dev/null | wc -l)
+          echo "Found $FILE_COUNT .txt output files"
+          if [ "$FILE_COUNT" -eq 0 ]; then
+            echo "FAIL: no .txt output files found in .github/outputs/"
+            exit 1
+          fi
+          echo "PASS: output files were written ($FILE_COUNT files)"
+
+      - name: Assert output files contain expected content
+        run: |
+          echo "Contents of output files:"
+          for f in .github/outputs/*.txt; do
+            echo "=== $f ==="
+            cat "$f"
+          done
+          # Check that any_changed.txt exists and has a valid value
+          if [ -f ".github/outputs/any_changed.txt" ]; then
+            VALUE=$(cat .github/outputs/any_changed.txt)
+            echo "any_changed.txt: $VALUE"
+            if [ "$VALUE" != "true" ] && [ "$VALUE" != "false" ]; then
+              echo "FAIL: any_changed.txt should contain 'true' or 'false', got '$VALUE'"
+              exit 1
+            fi
+            echo "PASS: any_changed.txt has valid value '$VALUE'"
+          else
+            echo "FAIL: any_changed.txt not found in .github/outputs/"
+            exit 1
+          fi
+
+      - name: Assert step outputs are still set
+        env:
+          ANY_CHANGED: ${{ steps.changed-files.outputs.any_changed }}
+          COUNT: ${{ steps.changed-files.outputs.all_changed_and_modified_files_count }}
+        run: |
+          echo "any_changed: $ANY_CHANGED"
+          echo "all_changed_and_modified_files_count: $COUNT"
+          if [ "$ANY_CHANGED" != "true" ]; then
+            echo "FAIL: expected any_changed=true, got '$ANY_CHANGED'"
+            exit 1
+          fi
+          if [ -z "$COUNT" ]; then
+            echo "FAIL: count output is empty"
+            exit 1
+          fi
+          echo "PASS: step outputs are set correctly"

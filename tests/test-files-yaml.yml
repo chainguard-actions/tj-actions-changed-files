@@ -1,0 +1,94 @@
+name: Test files_yaml input - YAML pattern grouping
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Configure git safe directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Get last two commit SHAs
+        id: commits
+        run: |
+          COMMITS=$(git log --format=%H -n 2)
+          SHA=$(echo "$COMMITS" | head -1)
+          BASE_SHA=$(echo "$COMMITS" | tail -1)
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "Current SHA: $SHA"
+          echo "Base SHA: $BASE_SHA"
+
+      - name: Run action with files_yaml grouping (all files)
+        id: changed-yaml
+        uses: .
+        with:
+          base_sha: ${{ steps.commits.outputs.base_sha }}
+          sha: ${{ steps.commits.outputs.sha }}
+          skip_initial_fetch: "true"
+          exclude_submodules: "true"
+          files_yaml: |
+            all_files:
+              - "**"
+            nonexistent:
+              - "**/*.nonexistentextension12345"
+
+      - name: Assert changed_keys output contains matched groups
+        env:
+          CHANGED_KEYS: ${{ steps.changed-yaml.outputs.changed_keys }}
+          MODIFIED_KEYS: ${{ steps.changed-yaml.outputs.modified_keys }}
+        run: |
+          echo "changed_keys: $CHANGED_KEYS"
+          echo "modified_keys: $MODIFIED_KEYS"
+          if [ -z "$CHANGED_KEYS" ] && [ -z "$MODIFIED_KEYS" ]; then
+            echo "FAIL: both changed_keys and modified_keys are empty"
+            exit 1
+          fi
+          echo "PASS: YAML grouping produced key outputs"
+
+      - name: Assert all_files group any_changed output
+        env:
+          ALL_FILES_ANY_CHANGED: ${{ steps.changed-yaml.outputs.all_files_any_changed }}
+          NONEXISTENT_ANY_CHANGED: ${{ steps.changed-yaml.outputs.nonexistent_any_changed }}
+        run: |
+          echo "all_files_any_changed: $ALL_FILES_ANY_CHANGED"
+          echo "nonexistent_any_changed: $NONEXISTENT_ANY_CHANGED"
+          if [ "$ALL_FILES_ANY_CHANGED" != "true" ]; then
+            echo "FAIL: expected all_files_any_changed=true, got '$ALL_FILES_ANY_CHANGED'"
+            exit 1
+          fi
+          if [ "$NONEXISTENT_ANY_CHANGED" != "false" ]; then
+            echo "FAIL: expected nonexistent_any_changed=false, got '$NONEXISTENT_ANY_CHANGED'"
+            exit 1
+          fi
+          echo "PASS: YAML group outputs are correct"
+
+      - name: Assert all_files group added_files or modified_files output
+        env:
+          ALL_FILES_ADDED: ${{ steps.changed-yaml.outputs.all_files_added_files }}
+          ALL_FILES_MODIFIED: ${{ steps.changed-yaml.outputs.all_files_modified_files }}
+          ALL_FILES_ALL_CHANGED: ${{ steps.changed-yaml.outputs.all_files_all_changed_files }}
+        run: |
+          echo "all_files_added_files: $ALL_FILES_ADDED"
+          echo "all_files_modified_files: $ALL_FILES_MODIFIED"
+          echo "all_files_all_changed_files: $ALL_FILES_ALL_CHANGED"
+          if [ -z "$ALL_FILES_ADDED" ] && [ -z "$ALL_FILES_MODIFIED" ] && [ -z "$ALL_FILES_ALL_CHANGED" ]; then
+            echo "FAIL: all file outputs for all_files group are empty"
+            exit 1
+          fi
+          echo "PASS: all_files group has file outputs"
+
+      - name: Assert changed_keys contains all_files
+        env:
+          CHANGED_KEYS: ${{ steps.changed-yaml.outputs.changed_keys }}
+        run: |
+          echo "changed_keys: $CHANGED_KEYS"
+          if ! echo "$CHANGED_KEYS" | grep -q "all_files"; then
+            echo "FAIL: expected 'all_files' in changed_keys, got '$CHANGED_KEYS'"
+            exit 1
+          fi
+          echo "PASS: changed_keys contains 'all_files'"

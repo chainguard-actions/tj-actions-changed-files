@@ -1,0 +1,101 @@
+name: Test basic usage - all changed files
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Configure git safe directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Get last two commit SHAs
+        id: commits
+        run: |
+          COMMITS=$(git log --format=%H -n 2)
+          SHA=$(echo "$COMMITS" | head -1)
+          BASE_SHA=$(echo "$COMMITS" | tail -1)
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "Current SHA: $SHA"
+          echo "Base SHA: $BASE_SHA"
+          if [ "$SHA" = "$BASE_SHA" ]; then
+            echo "WARNING: Only one commit found, SHAs are the same"
+          fi
+
+      - id: changed-files
+        uses: .
+        with:
+          base_sha: ${{ steps.commits.outputs.base_sha }}
+          sha: ${{ steps.commits.outputs.sha }}
+          skip_initial_fetch: "true"
+          exclude_submodules: "true"
+
+      - name: Assert outputs are set
+        env:
+          ANY_CHANGED: ${{ steps.changed-files.outputs.any_changed }}
+          ALL_CHANGED: ${{ steps.changed-files.outputs.all_changed_files }}
+          ALL_MODIFIED: ${{ steps.changed-files.outputs.all_modified_files }}
+          COUNT: ${{ steps.changed-files.outputs.all_changed_and_modified_files_count }}
+        run: |
+          echo "any_changed: $ANY_CHANGED"
+          echo "all_changed_files: $ALL_CHANGED"
+          echo "all_modified_files: $ALL_MODIFIED"
+          echo "all_changed_and_modified_files_count: $COUNT"
+          if [ -z "$ANY_CHANGED" ]; then
+            echo "FAIL: any_changed output is empty (action may have failed)"
+            exit 1
+          fi
+          if [ "$ANY_CHANGED" != "true" ] && [ "$ANY_CHANGED" != "false" ]; then
+            echo "FAIL: any_changed should be 'true' or 'false', got '$ANY_CHANGED'"
+            exit 1
+          fi
+          echo "PASS: any_changed is set to '$ANY_CHANGED'"
+
+      - name: Assert any_changed is true (repo has changes between commits)
+        env:
+          ANY_CHANGED: ${{ steps.changed-files.outputs.any_changed }}
+        run: |
+          echo "any_changed: $ANY_CHANGED"
+          if [ "$ANY_CHANGED" != "true" ]; then
+            echo "FAIL: expected any_changed=true (there should be changes between last two commits)"
+            exit 1
+          fi
+          echo "PASS: any_changed is true"
+
+      - name: Assert count output is a non-zero number
+        env:
+          COUNT: ${{ steps.changed-files.outputs.all_changed_and_modified_files_count }}
+        run: |
+          echo "all_changed_and_modified_files_count: $COUNT"
+          if [ -z "$COUNT" ]; then
+            echo "FAIL: count output is empty"
+            exit 1
+          fi
+          if ! echo "$COUNT" | grep -qE '^[0-9]+$'; then
+            echo "FAIL: count is not a number: '$COUNT'"
+            exit 1
+          fi
+          if [ "$COUNT" -eq 0 ]; then
+            echo "FAIL: expected non-zero count"
+            exit 1
+          fi
+          echo "PASS: count is $COUNT"
+
+      - name: Assert added_files output is set
+        env:
+          ADDED: ${{ steps.changed-files.outputs.added_files }}
+          MODIFIED: ${{ steps.changed-files.outputs.modified_files }}
+          ALL_CHANGED: ${{ steps.changed-files.outputs.all_changed_files }}
+        run: |
+          echo "added_files: $ADDED"
+          echo "modified_files: $MODIFIED"
+          echo "all_changed_files: $ALL_CHANGED"
+          if [ -z "$ALL_CHANGED" ] && [ -z "$ADDED" ] && [ -z "$MODIFIED" ]; then
+            echo "FAIL: all file outputs are empty"
+            exit 1
+          fi
+          echo "PASS: file outputs are set"

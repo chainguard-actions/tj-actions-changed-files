@@ -1,0 +1,107 @@
+name: Test files_ignore - exclude patterns
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Configure git safe directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Get last two commit SHAs
+        id: commits
+        run: |
+          COMMITS=$(git log --format=%H -n 2)
+          SHA=$(echo "$COMMITS" | head -1)
+          BASE_SHA=$(echo "$COMMITS" | tail -1)
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "Current SHA: $SHA"
+          echo "Base SHA: $BASE_SHA"
+
+      - name: Run action without ignore filter (baseline)
+        id: changed-no-ignore
+        uses: .
+        with:
+          base_sha: ${{ steps.commits.outputs.base_sha }}
+          sha: ${{ steps.commits.outputs.sha }}
+          skip_initial_fetch: "true"
+          exclude_submodules: "true"
+
+      - name: Assert baseline detects files
+        env:
+          ALL_CHANGED: ${{ steps.changed-no-ignore.outputs.all_changed_files }}
+          ANY_CHANGED: ${{ steps.changed-no-ignore.outputs.any_changed }}
+        run: |
+          echo "all_changed_files (no ignore): $ALL_CHANGED"
+          echo "any_changed: $ANY_CHANGED"
+          if [ "$ANY_CHANGED" != "true" ]; then
+            echo "FAIL: baseline should detect changes, got any_changed='$ANY_CHANGED'"
+            exit 1
+          fi
+          echo "PASS: baseline detects changes"
+
+      - name: Run action with files_ignore for nonexistent extension
+        id: changed-ignore-nonexistent
+        uses: .
+        with:
+          base_sha: ${{ steps.commits.outputs.base_sha }}
+          sha: ${{ steps.commits.outputs.sha }}
+          skip_initial_fetch: "true"
+          exclude_submodules: "true"
+          files_ignore: |
+            **/*.nonexistentextension12345
+
+      - name: Assert ignoring nonexistent files still shows all changes
+        env:
+          ALL_CHANGED: ${{ steps.changed-ignore-nonexistent.outputs.all_changed_files }}
+          ANY_CHANGED: ${{ steps.changed-ignore-nonexistent.outputs.any_changed }}
+        run: |
+          echo "all_changed_files (ignore nonexistent): $ALL_CHANGED"
+          echo "any_changed: $ANY_CHANGED"
+          if [ "$ANY_CHANGED" != "true" ]; then
+            echo "FAIL: ignoring nonexistent files should still show changes, got '$ANY_CHANGED'"
+            exit 1
+          fi
+          echo "PASS: changes still detected after ignoring nonexistent extension"
+
+      - name: Run action with files_ignore for all files
+        id: changed-ignore-all
+        uses: .
+        with:
+          base_sha: ${{ steps.commits.outputs.base_sha }}
+          sha: ${{ steps.commits.outputs.sha }}
+          skip_initial_fetch: "true"
+          exclude_submodules: "true"
+          files_ignore: |
+            **
+
+      - name: Assert ignoring all files shows no changes
+        env:
+          ANY_CHANGED: ${{ steps.changed-ignore-all.outputs.any_changed }}
+        run: |
+          echo "any_changed (ignore all): $ANY_CHANGED"
+          if [ "$ANY_CHANGED" != "false" ]; then
+            echo "FAIL: expected any_changed=false when all files are ignored, got '$ANY_CHANGED'"
+            exit 1
+          fi
+          echo "PASS: any_changed=false when all files ignored"
+
+      - name: Assert any_deleted output is set
+        env:
+          ANY_DELETED: ${{ steps.changed-no-ignore.outputs.any_deleted }}
+        run: |
+          echo "any_deleted: $ANY_DELETED"
+          if [ -z "$ANY_DELETED" ]; then
+            echo "FAIL: any_deleted output is empty"
+            exit 1
+          fi
+          if [ "$ANY_DELETED" != "true" ] && [ "$ANY_DELETED" != "false" ]; then
+            echo "FAIL: any_deleted should be 'true' or 'false', got '$ANY_DELETED'"
+            exit 1
+          fi
+          echo "PASS: any_deleted is set to '$ANY_DELETED'"

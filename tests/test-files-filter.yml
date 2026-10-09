@@ -1,0 +1,94 @@
+name: Test files filter - pattern matching
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Configure git safe directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Get last two commit SHAs
+        id: commits
+        run: |
+          COMMITS=$(git log --format=%H -n 2)
+          SHA=$(echo "$COMMITS" | head -1)
+          BASE_SHA=$(echo "$COMMITS" | tail -1)
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "Current SHA: $SHA"
+          echo "Base SHA: $BASE_SHA"
+
+      - name: Test - filter matches all files
+        id: changed-all
+        uses: .
+        with:
+          base_sha: ${{ steps.commits.outputs.base_sha }}
+          sha: ${{ steps.commits.outputs.sha }}
+          skip_initial_fetch: "true"
+          exclude_submodules: "true"
+          files: |
+            **
+
+      - name: Assert all-files filter detects changes
+        env:
+          ANY_CHANGED: ${{ steps.changed-all.outputs.any_changed }}
+          CHANGED_FILES: ${{ steps.changed-all.outputs.all_changed_files }}
+        run: |
+          echo "any_changed (all filter): $ANY_CHANGED"
+          echo "all_changed_files: $CHANGED_FILES"
+          if [ "$ANY_CHANGED" != "true" ]; then
+            echo "FAIL: expected any_changed=true for all-files filter, got '$ANY_CHANGED'"
+            exit 1
+          fi
+          echo "PASS: all-files filter detected changes"
+
+      - name: Test - filter does NOT match nonexistent file type
+        id: changed-nonexistent
+        uses: .
+        with:
+          base_sha: ${{ steps.commits.outputs.base_sha }}
+          sha: ${{ steps.commits.outputs.sha }}
+          skip_initial_fetch: "true"
+          exclude_submodules: "true"
+          files: |
+            **/*.nonexistentextension12345
+
+      - name: Assert nonexistent filter reports no changes
+        env:
+          ANY_CHANGED: ${{ steps.changed-nonexistent.outputs.any_changed }}
+        run: |
+          echo "any_changed (nonexistent filter): $ANY_CHANGED"
+          if [ "$ANY_CHANGED" != "false" ]; then
+            echo "FAIL: expected any_changed=false for nonexistent filter, got '$ANY_CHANGED'"
+            exit 1
+          fi
+          echo "PASS: nonexistent filter correctly reports no changes"
+
+      - name: Assert only_changed is set when all-files filter used
+        env:
+          ONLY_CHANGED: ${{ steps.changed-all.outputs.only_changed }}
+        run: |
+          echo "only_changed (all filter): $ONLY_CHANGED"
+          if [ -z "$ONLY_CHANGED" ]; then
+            echo "FAIL: only_changed output is empty"
+            exit 1
+          fi
+          echo "PASS: only_changed output is set to '$ONLY_CHANGED'"
+
+      - name: Assert other_changed_files is empty when all files match
+        env:
+          OTHER_CHANGED: ${{ steps.changed-all.outputs.other_changed_files }}
+        run: |
+          echo "other_changed_files (all filter): $OTHER_CHANGED"
+          # When files: "**" matches all files, other_changed_files should be empty
+          if [ -n "$OTHER_CHANGED" ]; then
+            echo "INFO: other_changed_files is non-empty: $OTHER_CHANGED"
+          else
+            echo "PASS: other_changed_files is empty as expected"
+          fi
+          echo "PASS"

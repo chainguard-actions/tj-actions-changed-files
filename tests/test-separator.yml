@@ -1,0 +1,108 @@
+name: Test custom separator output
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Configure git safe directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Get last two commit SHAs
+        id: commits
+        run: |
+          COMMITS=$(git log --format=%H -n 2)
+          SHA=$(echo "$COMMITS" | head -1)
+          BASE_SHA=$(echo "$COMMITS" | tail -1)
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "Current SHA: $SHA"
+          echo "Base SHA: $BASE_SHA"
+
+      - name: Run action with default space separator
+        id: changed-space
+        uses: .
+        with:
+          base_sha: ${{ steps.commits.outputs.base_sha }}
+          sha: ${{ steps.commits.outputs.sha }}
+          skip_initial_fetch: "true"
+          exclude_submodules: "true"
+
+      - name: Run action with comma separator
+        id: changed-comma
+        uses: .
+        with:
+          separator: ","
+          base_sha: ${{ steps.commits.outputs.base_sha }}
+          sha: ${{ steps.commits.outputs.sha }}
+          skip_initial_fetch: "true"
+          exclude_submodules: "true"
+
+      - name: Assert comma-separated output
+        env:
+          ALL_CHANGED_COMMA: ${{ steps.changed-comma.outputs.all_changed_files }}
+          ALL_CHANGED_SPACE: ${{ steps.changed-space.outputs.all_changed_files }}
+          ANY_CHANGED: ${{ steps.changed-comma.outputs.any_changed }}
+        run: |
+          echo "all_changed_files (comma sep): $ALL_CHANGED_COMMA"
+          echo "all_changed_files (space sep): $ALL_CHANGED_SPACE"
+          echo "any_changed: $ANY_CHANGED"
+          if [ "$ANY_CHANGED" != "true" ]; then
+            echo "FAIL: expected any_changed=true, got '$ANY_CHANGED'"
+            exit 1
+          fi
+          if [ -z "$ALL_CHANGED_COMMA" ]; then
+            echo "FAIL: all_changed_files output is empty with comma separator"
+            exit 1
+          fi
+          echo "PASS: comma-separated output: $ALL_CHANGED_COMMA"
+
+      - name: Run action with pipe separator
+        id: changed-pipe
+        uses: .
+        with:
+          separator: "|"
+          base_sha: ${{ steps.commits.outputs.base_sha }}
+          sha: ${{ steps.commits.outputs.sha }}
+          skip_initial_fetch: "true"
+          exclude_submodules: "true"
+
+      - name: Assert pipe-separated output
+        env:
+          ALL_CHANGED: ${{ steps.changed-pipe.outputs.all_changed_files }}
+          ANY_CHANGED: ${{ steps.changed-pipe.outputs.any_changed }}
+        run: |
+          echo "all_changed_files (pipe sep): $ALL_CHANGED"
+          echo "any_changed: $ANY_CHANGED"
+          if [ "$ANY_CHANGED" != "true" ]; then
+            echo "FAIL: expected any_changed=true with pipe separator, got '$ANY_CHANGED'"
+            exit 1
+          fi
+          if [ -z "$ALL_CHANGED" ]; then
+            echo "FAIL: all_changed_files output is empty with pipe separator"
+            exit 1
+          fi
+          echo "PASS: pipe-separated output: $ALL_CHANGED"
+
+      - name: Assert added_files_count is correct
+        env:
+          COUNT: ${{ steps.changed-comma.outputs.all_changed_and_modified_files_count }}
+        run: |
+          echo "all_changed_and_modified_files_count: $COUNT"
+          if [ -z "$COUNT" ]; then
+            echo "FAIL: count output is empty"
+            exit 1
+          fi
+          if ! echo "$COUNT" | grep -qE '^[0-9]+$'; then
+            echo "FAIL: count is not a number: '$COUNT'"
+            exit 1
+          fi
+          if [ "$COUNT" -lt 1 ]; then
+            echo "FAIL: expected at least 1 changed file, got $COUNT"
+            exit 1
+          fi
+          echo "PASS: count=$COUNT (>= 1)"

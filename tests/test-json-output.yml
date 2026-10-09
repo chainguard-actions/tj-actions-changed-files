@@ -1,0 +1,85 @@
+name: Test JSON output format
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Configure git safe directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Get last two commit SHAs
+        id: commits
+        run: |
+          COMMITS=$(git log --format=%H -n 2)
+          SHA=$(echo "$COMMITS" | head -1)
+          BASE_SHA=$(echo "$COMMITS" | tail -1)
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "Current SHA: $SHA"
+          echo "Base SHA: $BASE_SHA"
+
+      - id: changed-files-json
+        uses: .
+        with:
+          json: "true"
+          escape_json: "false"
+          base_sha: ${{ steps.commits.outputs.base_sha }}
+          sha: ${{ steps.commits.outputs.sha }}
+          skip_initial_fetch: "true"
+          exclude_submodules: "true"
+
+      - name: Assert all_changed_files is valid JSON array
+        env:
+          ALL_CHANGED: ${{ steps.changed-files-json.outputs.all_changed_files }}
+          ALL_MODIFIED: ${{ steps.changed-files-json.outputs.all_modified_files }}
+        run: |
+          echo "all_changed_files (JSON): $ALL_CHANGED"
+          echo "all_modified_files (JSON): $ALL_MODIFIED"
+          if ! echo "$ALL_CHANGED" | python3 -c "import sys, json; data=json.load(sys.stdin); assert isinstance(data, list)" 2>/dev/null; then
+            echo "FAIL: all_changed_files is not a valid JSON array: '$ALL_CHANGED'"
+            exit 1
+          fi
+          echo "PASS: all_changed_files is valid JSON"
+
+      - name: Assert added_files is valid JSON array
+        env:
+          ADDED: ${{ steps.changed-files-json.outputs.added_files }}
+        run: |
+          echo "added_files (JSON): $ADDED"
+          if ! echo "$ADDED" | python3 -c "import sys, json; data=json.load(sys.stdin); assert isinstance(data, list)" 2>/dev/null; then
+            echo "FAIL: added_files is not a valid JSON array: '$ADDED'"
+            exit 1
+          fi
+          echo "PASS: added_files is valid JSON"
+
+      - name: Assert any_changed is true
+        env:
+          ANY_CHANGED: ${{ steps.changed-files-json.outputs.any_changed }}
+        run: |
+          echo "any_changed: $ANY_CHANGED"
+          if [ "$ANY_CHANGED" != "true" ]; then
+            echo "FAIL: expected any_changed=true, got '$ANY_CHANGED'"
+            exit 1
+          fi
+          echo "PASS"
+
+      - name: Assert JSON output contains files
+        env:
+          ALL_CHANGED: ${{ steps.changed-files-json.outputs.all_changed_files }}
+          ALL_MODIFIED: ${{ steps.changed-files-json.outputs.all_modified_files }}
+        run: |
+          echo "all_changed_files (JSON): $ALL_CHANGED"
+          echo "all_modified_files (JSON): $ALL_MODIFIED"
+          # At least one of these should be non-empty (not just "[]")
+          ALL_CHANGED_NORM=$(echo "$ALL_CHANGED" | tr -d '[:space:]')
+          ALL_MODIFIED_NORM=$(echo "$ALL_MODIFIED" | tr -d '[:space:]')
+          if [ "$ALL_CHANGED_NORM" = "[]" ] && [ "$ALL_MODIFIED_NORM" = "[]" ]; then
+            echo "FAIL: both all_changed_files and all_modified_files are empty arrays"
+            exit 1
+          fi
+          echo "PASS: JSON output contains files"

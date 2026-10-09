@@ -1,0 +1,102 @@
+name: Test dir_names output mode
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Configure git safe directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Get last two commit SHAs
+        id: commits
+        run: |
+          COMMITS=$(git log --format=%H -n 2)
+          SHA=$(echo "$COMMITS" | head -1)
+          BASE_SHA=$(echo "$COMMITS" | tail -1)
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "Current SHA: $SHA"
+          echo "Base SHA: $BASE_SHA"
+
+      - id: changed-dirs
+        uses: .
+        with:
+          dir_names: "true"
+          base_sha: ${{ steps.commits.outputs.base_sha }}
+          sha: ${{ steps.commits.outputs.sha }}
+          skip_initial_fetch: "true"
+          exclude_submodules: "true"
+
+      - name: Assert dir_names output contains directories not files
+        env:
+          ALL_CHANGED: ${{ steps.changed-dirs.outputs.all_changed_files }}
+          ALL_MODIFIED: ${{ steps.changed-dirs.outputs.all_modified_files }}
+          ANY_CHANGED: ${{ steps.changed-dirs.outputs.any_changed }}
+        run: |
+          echo "all_changed_files (dir_names): $ALL_CHANGED"
+          echo "all_modified_files (dir_names): $ALL_MODIFIED"
+          echo "any_changed: $ANY_CHANGED"
+          if [ -z "$ANY_CHANGED" ]; then
+            echo "FAIL: any_changed output is empty (action may have failed)"
+            exit 1
+          fi
+          if [ "$ANY_CHANGED" != "true" ] && [ "$ANY_CHANGED" != "false" ]; then
+            echo "FAIL: any_changed should be 'true' or 'false', got '$ANY_CHANGED'"
+            exit 1
+          fi
+          echo "PASS: dir_names mode produced valid output"
+
+      - name: Assert any_changed is true
+        env:
+          ANY_CHANGED: ${{ steps.changed-dirs.outputs.any_changed }}
+        run: |
+          echo "any_changed: $ANY_CHANGED"
+          if [ "$ANY_CHANGED" != "true" ]; then
+            echo "FAIL: expected any_changed=true, got '$ANY_CHANGED'"
+            exit 1
+          fi
+          echo "PASS"
+
+      - name: Assert dir output does not contain file extensions (it's directory names)
+        env:
+          ALL_CHANGED: ${{ steps.changed-dirs.outputs.all_changed_files }}
+        run: |
+          echo "all_changed_files (dir_names): $ALL_CHANGED"
+          if [ -z "$ALL_CHANGED" ]; then
+            echo "FAIL: expected non-empty directory output"
+            exit 1
+          fi
+          echo "PASS: dir_names output is non-empty: $ALL_CHANGED"
+
+      - name: Test dir_names_max_depth limits output depth
+        id: changed-dirs-depth
+        uses: .
+        with:
+          dir_names: "true"
+          dir_names_max_depth: "1"
+          base_sha: ${{ steps.commits.outputs.base_sha }}
+          sha: ${{ steps.commits.outputs.sha }}
+          skip_initial_fetch: "true"
+          exclude_submodules: "true"
+
+      - name: Assert max_depth limits directory depth
+        env:
+          ALL_CHANGED: ${{ steps.changed-dirs-depth.outputs.all_changed_files }}
+          ANY_CHANGED: ${{ steps.changed-dirs-depth.outputs.any_changed }}
+        run: |
+          echo "all_changed_files (max_depth=1): $ALL_CHANGED"
+          echo "any_changed: $ANY_CHANGED"
+          if [ -z "$ANY_CHANGED" ]; then
+            echo "FAIL: any_changed output is empty"
+            exit 1
+          fi
+          if [ "$ANY_CHANGED" = "true" ] && [ -z "$ALL_CHANGED" ]; then
+            echo "FAIL: any_changed=true but all_changed_files is empty"
+            exit 1
+          fi
+          echo "PASS: max_depth=1 output: $ALL_CHANGED"
