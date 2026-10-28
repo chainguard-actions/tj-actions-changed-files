@@ -6,15 +6,15 @@ Hardened by [Chainguard](https://www.chainguard.dev) from the upstream action at
 
 ## Versions
 
-| Version | Tag | Upstream commit |
-|---------|-----|-----------------|
-| v42.1.0 | [`v42.1.0`](https://github.com/chainguard-actions/tj-actions-changed-files/tree/v42.1.0) | [`aa08304`](https://github.com/tj-actions/changed-files/commit/aa08304bd477b800d468db44fe10f6c61f7f7b11) |
-| v45.0.2 | [`v45.0.2`](https://github.com/chainguard-actions/tj-actions-changed-files/tree/v45.0.2) | [`48d8f15`](https://github.com/tj-actions/changed-files/commit/48d8f15b2aaa3d255ca5af3eba4870f807ce6b3c) |
-| v46.0.1 | [`v46.0.1`](https://github.com/chainguard-actions/tj-actions-changed-files/tree/v46.0.1) | [`2f7c5bf`](https://github.com/tj-actions/changed-files/commit/2f7c5bfce28377bc069a65ba478de0a74aa0ca32) |
-| v46.0.5 | [`v46.0.5`](https://github.com/chainguard-actions/tj-actions-changed-files/tree/v46.0.5) | [`ed68ef8`](https://github.com/tj-actions/changed-files/commit/ed68ef82c095e0d48ec87eccea555d944a631a4c) |
-| v47 | [`v47`](https://github.com/chainguard-actions/tj-actions-changed-files/tree/v47) | [`24d32ff`](https://github.com/tj-actions/changed-files/commit/24d32ffd492484c1d75e0c0b894501ddb9d30d62) |
-| v47.0.1 | [`v47.0.1`](https://github.com/chainguard-actions/tj-actions-changed-files/tree/v47.0.1) | — |
-| v47.0.6 | [`v47.0.6`](https://github.com/chainguard-actions/tj-actions-changed-files/tree/v47.0.6) | [`9426d40`](https://github.com/tj-actions/changed-files/commit/9426d40962ed5378910ee2e21d5f8c6fcbf2dd96) |
+| Version | Tag | Upstream commit | Hardening report |
+|---------|-----|-----------------|------------------|
+| v42.1.0 | [`v42.1.0`](https://github.com/chainguard-actions/tj-actions-changed-files/tree/v42.1.0) | [`aa08304`](https://github.com/tj-actions/changed-files/commit/aa08304bd477b800d468db44fe10f6c61f7f7b11) | [`HARDENING.md`](https://github.com/chainguard-actions/tj-actions-changed-files/blob/v42.1.0/HARDENING.md) |
+| v45.0.2 | [`v45.0.2`](https://github.com/chainguard-actions/tj-actions-changed-files/tree/v45.0.2) | [`48d8f15`](https://github.com/tj-actions/changed-files/commit/48d8f15b2aaa3d255ca5af3eba4870f807ce6b3c) | [`HARDENING.md`](https://github.com/chainguard-actions/tj-actions-changed-files/blob/v45.0.2/HARDENING.md) |
+| v46.0.1 | [`v46.0.1`](https://github.com/chainguard-actions/tj-actions-changed-files/tree/v46.0.1) | [`2f7c5bf`](https://github.com/tj-actions/changed-files/commit/2f7c5bfce28377bc069a65ba478de0a74aa0ca32) | [`HARDENING.md`](https://github.com/chainguard-actions/tj-actions-changed-files/blob/v46.0.1/HARDENING.md) |
+| v46.0.5 | [`v46.0.5`](https://github.com/chainguard-actions/tj-actions-changed-files/tree/v46.0.5) | [`ed68ef8`](https://github.com/tj-actions/changed-files/commit/ed68ef82c095e0d48ec87eccea555d944a631a4c) | [`HARDENING.md`](https://github.com/chainguard-actions/tj-actions-changed-files/blob/v46.0.5/HARDENING.md) |
+| v47 | [`v47`](https://github.com/chainguard-actions/tj-actions-changed-files/tree/v47) | [`24d32ff`](https://github.com/tj-actions/changed-files/commit/24d32ffd492484c1d75e0c0b894501ddb9d30d62) | [`HARDENING.md`](https://github.com/chainguard-actions/tj-actions-changed-files/blob/v47/HARDENING.md) |
+| v47.0.1 | [`v47.0.1`](https://github.com/chainguard-actions/tj-actions-changed-files/tree/v47.0.1) | — | — |
+| v47.0.6 | [`v47.0.6`](https://github.com/chainguard-actions/tj-actions-changed-files/tree/v47.0.6) | [`9426d40`](https://github.com/tj-actions/changed-files/commit/9426d40962ed5378910ee2e21d5f8c6fcbf2dd96) | [`HARDENING.md`](https://github.com/chainguard-actions/tj-actions-changed-files/blob/v47.0.6/HARDENING.md) |
 
 ## Privacy
 
